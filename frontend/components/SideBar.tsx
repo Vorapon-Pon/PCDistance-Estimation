@@ -1,9 +1,23 @@
+'use client';
+
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Boxes, Compass, Flag, Settings, LogOut, UserCircle, House } from 'lucide-react';
+import { get } from 'http';
 
 export default function Sidebar() {
+    const pathname = usePathname();
+    // Function to determine if a link is active for styling sidebar
+    const getLinkClasses = (path: string) => {
+        const isActive = pathname === path || (path !== '/dashboard' && pathname.startsWith(path));
+        const baseClass = "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ease-out";
+        const activeClass = "bg-[#525252] text-white";
+        const inactiveClass = "hover:bg-[#3F3F3F] hover:text-white hover:translate-x-1";
+        return `${baseClass} ${isActive ? activeClass : inactiveClass}`;
+    };
+
     return (
-        <aside className="w-64 bg-[#282828] text-gray-400 flex flex-col h-screen border-r border-gray-800">
+        <aside className="w-64 bg-[#282828] text-gray-400 flex flex-col h-screen border-r border-neutral-800">
             {/* Logo Section */}
             <div className="p-6 flex item-center gap-2">
                 <div className="font-bold text-xl text-white tracking-wider flex items-center gap-1">
@@ -15,7 +29,7 @@ export default function Sidebar() {
             <nav className='flex-1 px-4 space-y-2 mt-4'>
                 <Link 
                   href="/dashboard" 
-                  className='flex items-center gap-3 px-4 py-3 bg-[#525252] text-white rounded-lg transition-colors'
+                  className={getLinkClasses('/dashboard')}
                 >
                     <House size={20} />
                     <span>Dashboard</span>
@@ -23,15 +37,15 @@ export default function Sidebar() {
 
                 <Link 
                   href="/projects" 
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-[#3F3F3F] hover:text-white rounded-lg transition-colors"
+                  className={getLinkClasses('/projects')}
                 >
                   <Boxes size={20} />
                   <span>Projects</span>
                 </Link>
 
                 <Link 
-                  href="/dashboard/explore" 
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-[#3F3F3F] hover:text-white rounded-lg transition-colors"
+                  href="/explore" 
+                  className={getLinkClasses('/explore')}
                 >
                   <Compass size={20} />
                   <span>Explore</span>
@@ -42,10 +56,11 @@ export default function Sidebar() {
             <div className='px-4 py-2 space-y-2'>
                 <Link
                   href='/settings'
-                  className='w-full flex items-center gap-3 px-4 py-3 hover:bg-[#3F3F3F] hover:text-white rounded-lg transition-colors'>
-                    <Settings size={20} />
-                    <span>Settings</span>
-                  </Link>
+                  className={getLinkClasses('/settings')}
+                >
+                  <Settings size={20} />
+                  <span>Settings</span>
+                </Link>
             </div>
 
             {/* User Profile */}
