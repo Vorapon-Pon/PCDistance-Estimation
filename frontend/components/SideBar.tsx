@@ -1,12 +1,54 @@
 'use client';
 
+import { use, useEffect, useState } from 'react';
+import { createClient } from '@/utils/client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Boxes, Compass, Flag, Settings, LogOut, UserCircle, House } from 'lucide-react';
 import { get } from 'http';
+import { User } from '@supabase/supabase-js';
+
+type UserProfile = {
+    display_name: string;
+    email: string;
+    avatar_url?: string | null;
+};
 
 export default function Sidebar() {
     const pathname = usePathname();
+    const router = useRouter();
+    const supabase = createClient();
+
+    const [user, setUser] = useState<UserProfile | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const getUserData = async () => {
+            const { data: { user }} = await supabase.auth.getUser();
+
+            if (user) {
+                const { data: profileData } = await supabase.from('profiles')
+                .select('display_name, email, avatar_url')
+                .eq('id', user.id)
+                .single();
+                
+                setUser({
+                    email: user.email || '',
+                    display_name: profileData?.display_name || 'Unknown User',
+                    avatar_url: profileData?.avatar_url || null,
+                
+                });
+            }
+            setLoading(false);
+        };
+        getUserData();
+    }, [supabase]);
+
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
+        router.push('/');
+        router.refresh();
+    };
     // Function to determine if a link is active for styling sidebar
     const getLinkClasses = (path: string) => {
         const isActive = pathname === path || (path !== '/dashboard' && pathname.startsWith(path));
@@ -65,18 +107,48 @@ export default function Sidebar() {
 
             {/* User Profile */}
             <div className='p-4 border-t border-[#3F3F3F] mt-2'>
-                <div className='flex items-center gap-3 px-2'>
-                    <Link
-                      href='/profile'
-                      className='w-10 h-10 bg-[#3F3F3F] rounded-full flex items-center justify-center hover:bg-[#525252] text-white transition-colors'>
-                        <UserCircle size={24} />
-                    </Link>
-                    <div className='flex-1 overflow-hidden'>
-                        <p className='text-sm font-medium text-white truncate'>UserName</p>
-                        <p className='text-xs text-gray-500 truncate'>useremail@gmail.com</p>
+                {loading ? (
+                    <div className="flex items-center gap-3 px-2 animate-pulse">
+                        <div className="w-10 h-10 bg-[#3F3F3F] rounded-full"></div>
+                        <div className="flex-1 space-y-2">
+                            <div className="h-3 bg-[#3F3F3F] rounded w-20"></div>
+                            <div className="h-2 bg-[#3F3F3F] rounded w-28"></div>
+                        </div>
                     </div>
-                    <LogOut size={18} className='cursor-pointer hover:text-white'/>
-                </div>
+                ):(
+                    <div className="flex items-center gap-3 px-2">
+                        {/* Avatar */}
+                        <Link
+                            href='/profile'
+                            className='w-10 h-10 bg-[#3F3F3F] rounded-full flex items-center justify-center hover:bg-[#525252] text-white transition-colors overflow-hidden shrink-0'
+                        >
+                            {user?.avatar_url ? (
+                                <img src={user.avatar_url} alt="profile picture" className="w-full h-full object-cover" />
+                            ) : ( 
+                                <UserCircle size={24} />
+                            )}
+                        </Link>
+
+                        {/* User Info */}
+                        <div className='flex-1 overflow-hidden'>
+                            <p className='text-sm font-medium text-white truncate'>
+                                {user?.display_name || 'Unknown User'}
+                            </p>
+                            <p className='text-xs text-gray-500 truncate' title={user?.email || ''}>
+                                {user?.email}
+                            </p>
+                        </div>
+
+                        {/* Logout Button */}
+                        <button 
+                            onClick={handleLogout}
+                            className='text-gray-400 hover:text-red-400 transition-colors p-1'
+                            title='Sign out' 
+                        >
+                            <LogOut size={18} />
+                        </button>
+                    </div>
+                )}
             </div>
         </aside>
     );

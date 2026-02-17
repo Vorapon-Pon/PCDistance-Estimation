@@ -137,7 +137,7 @@ function StatCard({ title, value, subText, icon}: { title:string, value:string, 
 function ProjectCard({ title, user, likes, views }: { title: string, user: string, likes: string, views: string }) {
   return (
     <Card className="bg-[#282828] border-[#383838] hover:bg-[#3F3F3F]/50 transition-colors cursor-pointer group p-3 flex flex-row items-center gap-4">
-       <div className="w-14 h-14 bg-[#282828] rounded-lg flex items-center justify-center border border-[#383838] shrink-0 group-hover:border-[#545454] transition-colors">
+       <div className="w-14 h-14 bg-[#282828] rounded-lg flex items-center justify-center border-[#383838] shrink-0 group-hover:border-[#545454] transition-colors">
          <ImageIcon className="text-[#383838]  group-hover:text-[#545454]" size={24} />
        </div>
        <div className="flex flex-col justify-center min-w-0">
