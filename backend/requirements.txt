@@ -1,4 +1,7 @@
 fastapi
 uvicorn
 pydantic
-numpy
+sqlmodel
+psycopg2-binary
+python-multipart
+passlib[bcrypt]

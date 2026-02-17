@@ -1,7 +1,31 @@
 import { House, Box, Clock, Zap, Link as LinkIcon, Image as ImageIcon, Eye, Heart } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle} from '@/components/ui/card';
+import { createClient } from '@/utils/server'
 
-export default function DashboardPage() {
+export default  async function DashboardPage() {
+    const supabase = await createClient()
+
+    const { data: { user }} = await supabase.auth.getUser()
+
+    const { data: projects, error } = await supabase.from('projects')
+    .select(`
+      id, 
+      user_id, 
+      project_name, 
+      status,
+      is_public,
+      created_at,
+      image_count
+    `).eq('user_id', user?.id)
+
+    const projectList = projects || [];
+    const totalProjects = projectList.length;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todaysProjects = projectList.filter(p => p.created_at.startsWith(todayStr)).length;
+
+    if (error) return <div>Error loading projects</div>
+
     return (
         <div className='text-white space-y-10'>
 
@@ -19,29 +43,29 @@ export default function DashboardPage() {
                 {/* Card 1 */}
                 <StatCard 
                     title="Total Project" 
-                    value="15" 
+                    value={totalProjects.toString()} 
                     subText="Public projects" 
                     icon={<Box className="text-white" size={36} />} 
                 />
                 {/* Card 2 */}
                 <StatCard 
                     title="Today's Project" 
-                    value="4" 
-                    subText="6 in this month" 
+                    value={todaysProjects.toString()}
+                    subText={`${todaysProjects} in this month`}
                     icon={<Clock className="text-white" size={36} />} 
                 />
                 {/* Card 3 */}
                 <StatCard 
                     title="Successful runs" 
-                    value="2" 
+                    value={totalProjects.toString()}
                     subText="your finish running project" 
                     icon={<Zap className="text-white" size={36} />} 
                 />
                 {/* Card 4 */}
                 <StatCard 
                     title="Credits Usage" 
-                    value="325" 
-                    subText={"950" + "Total Credits Used" }
+                    value={totalProjects.toString()}
+                    subText={`${totalProjects} Total Credits Used`}
                     icon={<LinkIcon className="text-white" size={36} />} 
                 />
             </div>
