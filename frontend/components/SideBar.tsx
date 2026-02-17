@@ -1,12 +1,10 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Boxes, Compass, Flag, Settings, LogOut, UserCircle, House } from 'lucide-react';
-import { get } from 'http';
-import { User } from '@supabase/supabase-js';
 
 type UserProfile = {
     display_name: string;
