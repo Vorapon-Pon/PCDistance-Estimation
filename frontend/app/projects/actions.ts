@@ -31,6 +31,7 @@ export async function createProject(formData: FormData) {
     return { error: error.message }
   }
 
-  revalidatePath('/dashboard')
+  revalidatePath('/projects')
+  
   return { success: true }
 }

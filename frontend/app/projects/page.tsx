@@ -5,6 +5,7 @@ import { createClient } from '@/utils/client';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, } from '@/components/ui/dropdown-menu';
 import { Search, Plus, ChevronDown, MoreVertical, Globe, Image as ImageIcon, Layers, Clock, Calendar, ArrowDownAZ, Loader2 } from 'lucide-react';
 import NewProjectModal from '@/components/NewProjectModal';
+import Link from 'next/link';
 
 const SORT_OPTIONS = [
   { label: 'Recent Date', icon: Clock },
@@ -37,15 +38,12 @@ export default function ProjectsPage() {
 
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       console.log("Current User:", user); 
-      console.log("Auth Error:", authError);
 
       const { data, error } = await supabase.from('projects')
         .select('*')
         .eq('user_id', user?.id)
         .order('created_at', { ascending: false });
 
-      console.log("Projects Data:", data);
-      console.log("Fetch Error:", error);
       if (!error && data) {
         setProjects(data);
       } 
@@ -72,7 +70,7 @@ export default function ProjectsPage() {
     });
 
   return (
-    <div className="text-white">
+    <div className="text-white p-6">
       
       {/* Header Title */}
       <div className="flex items-center gap-3 mb-8">
@@ -136,6 +134,7 @@ export default function ProjectsPage() {
           {filteredProjects.map((project) => (
             <ProjectCard
               key={project.id}
+              id={project.id}
               title={project.project_name}
               edited={timeAgo(project.updated_at || project.created_at)}
               imageCount={project.image_count || 0}
@@ -168,24 +167,27 @@ function timeAgo(dateString: string) {
 
 // --- Component: Project Card ---
 interface ProjectCardProps {
+  id: string;
   title: string;
   edited: string;
   imageCount: number;
   visibility: string;
 }
 
-function ProjectCard({ title, edited, imageCount, visibility }: ProjectCardProps) {
+function ProjectCard({ id, title, edited, imageCount, visibility }: ProjectCardProps) {
+  const projectLink = `/projects/${id}/upload`
+  
   return (
-    <div className="flex flex-row justify-between items-center bg-neutral-800 w-full p-1 py-2  rounded-xl border border-transparent hover:border-neutral-700 transition-all group">
-      {/* Card Header: Icon + Menu */}
-      <div className="flex justify-between items-start px-1">
+    <Link key={id} href={projectLink} className="flex flex-row gap-1 items-center bg-neutral-800 w-full p-1 py-2  rounded-xl border border-transparent hover:border-neutral-700 transition-all group">
+      
+      <div className="flex justify-between items-start px-2">
         {/* Thumbnail Placeholder */}
         <div className="w-12 h-12 bg-neutral-700 rounded-lg flex items-center justify-center text-neutral-800">
           <ImageIcon size={20} />
         </div>
       </div>
 
-      <div className='flex flex-col px-2' >
+      <div className='flex flex-col w-full px-2' >
         {/* Visibility Tag */}
         <div className="flex items-center justify-between gap-1.5 text-xs text-neutral-500 mb-2">
           <div className="flex items-center gap-1">
@@ -208,6 +210,6 @@ function ProjectCard({ title, edited, imageCount, visibility }: ProjectCardProps
         Edit {edited} • {imageCount} Images
       </p>
       </div>
-    </div>
+    </Link>
   );
 }

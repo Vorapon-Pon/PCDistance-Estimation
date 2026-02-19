@@ -1,6 +1,7 @@
 'use client';
 
-import { use, useState } from 'react';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createProject } from '@/app/projects/actions';
 import { Plus, X, Globe, GlobeLock, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
@@ -12,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 
 export default function NewProjectModal() {
+    const router = useRouter();
+
     const [isOpen, setIsOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [visibility, setVisibility] = useState('public');
@@ -30,6 +33,8 @@ export default function NewProjectModal() {
             toast.success('Project created successfully!');
             setIsLoading(false);
             setIsOpen(false);
+            router.refresh();
+            setTimeout(() => { window.location.reload(); }, 1000); 
         }
     }
     
