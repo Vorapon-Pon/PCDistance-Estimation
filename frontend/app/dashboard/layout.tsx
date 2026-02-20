@@ -7,7 +7,7 @@ export default function DashboardLayout({
 
 }) {
     return (
-        <div className="flex min-h-screen bg-[#121212]">
+        <div className="flex min-h-screen bg-neutral-900">
             {/* The Sidebar is fixed on the left */}
             <Sidebar />
 

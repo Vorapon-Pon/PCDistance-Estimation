@@ -40,13 +40,27 @@ export default function ProjectsPage() {
       console.log("Current User:", user); 
 
       const { data, error } = await supabase.from('projects')
-        .select('*')
+        .select(`*, batches( image_count )`)
         .eq('user_id', user?.id)
         .order('created_at', { ascending: false });
 
-      if (!error && data) {
-        setProjects(data);
-      } 
+     if (!error && data) {
+        const formattedProjects = data.map((project: any) => {
+          const totalImages = project.batches?.reduce(
+            (sum: number, batch: any) => sum + (batch.image_count || 0), 
+            0
+          ) || 0;
+
+          return {
+            ...project,
+            image_count: totalImages 
+          };
+        });
+
+        setProjects(formattedProjects);
+      } else if (error) {
+        console.error("Error fetching projects:", error.message);
+      }
       setLoading(false);
     };
 
