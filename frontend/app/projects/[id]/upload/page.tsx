@@ -108,6 +108,7 @@ export default function UploadPage() {
       let successImageCount = 0;
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        const timestamp = Date.now();
         const filePath = `${projectId}/batches/${batchData.id}/${Date.now()}_${file.name}`;
 
         // อัปโหลดขึ้น Storage 'project_files'
@@ -121,10 +122,21 @@ export default function UploadPage() {
         }
 
         if (file.type.includes('image') || file.name.match(/\.(jpg|jpeg|png)$/i)) {
+          const { thumbnail, width, height } = await processImage(file);
+          const thumbnailPath = filePath.replace(/(\.[\w\d_-]+)$/i, '_thumb$1');
+
+          const { error: thumbUploadError } = await supabase.storage
+              .from('project_files')
+              .upload(thumbnailPath, thumbnail);
+          if (thumbUploadError) console.warn("Thumbnail upload failed:", thumbUploadError);
+          
           await supabase.from('project_images').insert({
             project_id: projectId,
             batch_id: batchData.id,
             storage_path: filePath,
+            thumbnail_path: thumbnailPath,
+            width: width,
+            height: height,
             format: file.type || 'image/jpeg',
             size_bytes: file.size,
             user_id: currentUser.id
@@ -261,6 +273,46 @@ export default function UploadPage() {
       }, 800);
       if (camFileInputRef.current) camFileInputRef.current.value = '';
     }
+  };
+
+  // for creating Thumbnail
+  const processImage = (file: File): Promise<{ thumbnail: Blob, width: number, height: number }> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // กำหนดขนาดสูงสุดของ Thumbnail (เช่น กว้างไม่เกิน 300px)
+        const maxWidth = 300;
+        const scaleFactor = maxWidth / img.width;
+        // ถ้าฉบับจริงเล็กกว่า 300px ก็ใช้ขนาดเดิม
+        const thumbWidth = img.width > maxWidth ? maxWidth : img.width;
+        const thumbHeight = img.width > maxWidth ? img.height * scaleFactor : img.height;
+
+        canvas.width = thumbWidth;
+        canvas.height = thumbHeight;
+
+        // วาดรูปลงบน Canvas เพื่อย่อขนาด
+        ctx?.drawImage(img, 0, 0, thumbWidth, thumbHeight);
+
+        // แปลง Canvas กลับเป็นไฟล์รูปภาพ (Blob)
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve({
+              thumbnail: blob,
+              width: img.width,   // ส่งความกว้างต้นฉบับกลับไป
+              height: img.height  // ส่งความสูงต้นฉบับกลับไป
+            });
+          } else {
+            reject(new Error('Could not create thumbnail blob'));
+          }
+        }, 'image/jpeg', 0.8); // กำหนดคุณภาพ JPEG ที่ 80%
+      };
+      img.onerror = (error) => reject(error);
+      // สร้าง URL ชั่วคราวเพื่อโหลดรูปภาพ
+      img.src = URL.createObjectURL(file);
+    });
   };
 
   return (
