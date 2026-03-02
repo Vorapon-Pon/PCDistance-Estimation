@@ -153,6 +153,22 @@ export default function UploadPage() {
             processing_status: 'pending',
             user_id: currentUser.id
           });
+          try {
+            await fetch("http://127.0.0.1:8000/api/convert-pointcloud", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                project_id: projectId,
+                bucket_name: "project_files",
+                file_path: filePath  
+              })
+            });
+
+            console.log("Sent to FastAPI for processing");
+
+          } catch (apiError) {
+            console.error("FastAPI call failed:", apiError);
+          }
         }
         successCount++;
         setUploadProgress(Math.round(((i + 1) / files.length) * 100));
@@ -318,8 +334,8 @@ export default function UploadPage() {
   return (
     <div className="p-6 text-neutral-200 min-h-screen bg-neutral-900">
       {/* 1. Header Section */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold flex items-center gap-3 mb-6">
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold flex pb-4 border-b border-neutral-800 items-center gap-3 mb-6">
           <Upload className="text-neutral-200" size={28} />
           Upload data
         </h1>
