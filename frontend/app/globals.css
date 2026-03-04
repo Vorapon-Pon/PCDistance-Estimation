@@ -114,6 +114,31 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
 }
+/* สำหรับ Firefox */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #525252 #171717; /* สีของ Thumb และ Track */
+}
+
+/* สำหรับ Chrome, Edge, และ Safari */
+.custom-scrollbar::-webkit-scrollbar {
+  height: 6px; /* ความหนาของ Scrollbar แนวนอน */
+  width: 6px;  /* ความหนาของ Scrollbar แนวตั้ง */
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #171717; /* สีพื้นหลังของราง (neutral-900) */
+  border-radius: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #525252; /* สีของตัวเลื่อน (neutral-600) */
+  border-radius: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #737373; /* สีของตัวเลื่อนตอนเอาเมาส์ชี้ (neutral-500) */
+}
 
 @layer base {
   * {

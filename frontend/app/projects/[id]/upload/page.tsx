@@ -73,11 +73,37 @@ export default function UploadPage() {
     if (camData) setCameraPositions(camData);
   }
 
+  async function checkExistingPointCloud(): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('project_point_clouds')
+    .select('*', { count: 'exact', head: true })
+    .eq('project_id', projectId);
+
+  if (error) {
+    console.error("Check pointcloud error:", error);
+    return false;
+  }
+
+  return (count ?? 0) > 0;
+}
+
   const handleMainUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
     if (!batchName.trim()) {
       toast.error('Please enter a Batch Name first!');
+      return;
+    }
+
+    const hasPointCloud = await checkExistingPointCloud();
+
+    const uploadingPointCloud = Array.from(files).some(file =>
+      file.name.match(/\.(las|bin|pcd|npy)$/i)
+    );
+
+    if (hasPointCloud && uploadingPointCloud) {
+      toast.error("This project already has a point cloud.");
+      if (mainFileInputRef.current) mainFileInputRef.current.value = '';
       return;
     }
     setIsUploadingMain(true);
