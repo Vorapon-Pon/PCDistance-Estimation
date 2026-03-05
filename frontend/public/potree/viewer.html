@@ -28,17 +28,21 @@
     <script src="./build/potree/potree.js"></script>
     <script src="./libs/plasio/js/laslaz.js"></script>
 
-    <div id="potree_render_area" style="position: absolute; width: 100%; height: 100%; left: 0px; top: 0px;"></div>
+    <div class="potree_container" style="position: absolute; width: 100%; height: 100%; left: 0px; top: 0px; ">
+        
+        <div id="potree_render_area"></div>
+        
+        <div id="potree_sidebar_container"></div>
 
+    </div>
     <script>
-        // 1. อ่าน URL parameter ที่ Next.js ส่งมาให้ (เช่น ?cloudUrl=http://...)
+        // อ่าน URL parameter ที่ Next.js ส่งมาให้ (เช่น ?cloudUrl=http://...)
         const urlParams = new URLSearchParams(window.location.search);
         const cloudUrl = urlParams.get('cloudUrl');
 
         if (!cloudUrl) {
             document.getElementById('potree_render_area').innerHTML = '<h2 style="color:white; text-align:center; margin-top:20%;">No Point Cloud URL Provided</h2>';
         } else {
-            // 2. เริ่มต้นตั้งค่า Potree Viewer
             window.viewer = new Potree.Viewer(document.getElementById("potree_render_area"));
             
             viewer.setEDLEnabled(true); // เปิด Eye Dome Lighting ทำให้ดูมีมิติ
@@ -46,20 +50,49 @@
             viewer.setPointBudget(2_000_000); // จำนวนจุดที่โหลตต่อครั้ง (ปรับเพิ่ม/ลด ตามความแรงคอม)
             viewer.setBackground("black");
 
-            // 3. โหลดไฟล์ Point Cloud จาก URL ที่ได้มา
-            Potree.loadPointCloud(cloudUrl, "My Point Cloud", function(e){
+            viewer.loadGUI(() => {
+                viewer.setLanguage('en'); // หรือ 'th' ถ้ามีไฟล์ภาษาไทย
+                $("#menu_tools").next().show(); // กางเมนู Tools ออกมา
+                viewer.toggleSidebar(); // แสดง Sidebar ด้านซ้าย
+            });
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const camX = parseFloat(urlParams.get('X')) || 0;
+            const camY = parseFloat(urlParams.get('Y')) || 0;
+            const camZ = parseFloat(urlParams.get('Z')) || 0;
+            const heading = parseFloat(urlParams.get('heading')) || 0;
+            const pitch = parseFloat(urlParams.get('pitch')) || 0;
+            const roll = parseFloat(urlParams.get('roll')) || 0;
+
+            Potree.loadPointCloud(cloudUrl, "Point Cloud", e => {
                 let scene = viewer.scene;
                 let pointcloud = e.pointcloud;
                 
                 let material = pointcloud.material;
-                material.size = 1; // ขนาดของจุด
+                material.size = 1;
                 material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
-                material.shape = Potree.PointShape.SQUARE;
-                
                 scene.addPointCloud(pointcloud);
+
+                // ==========================================
+                //  Camera
+                // ==========================================
+                const carGeom = new THREE.BoxGeometry(2, 1, 1); 
+                const carMat = new THREE.MeshStandardMaterial({ 
+                    color: 0xFFFFFF
+                });
+                const carMesh = new THREE.Mesh(carGeom, carMat);
                 
-                // ให้กล้องซูมไปที่โมเดลโดยอัตโนมัติ
-                viewer.fitToScreen();
+                carMesh.position.set(camX, camY, camZ);
+                
+                carMesh.rotation.z = -THREE.MathUtils.degToRad(heading); 
+                carMesh.rotation.x = -THREE.MathUtils.degToRad(pitch); 
+                carMesh.rotation.y = -THREE.MathUtils.degToRad(roll); 
+                
+                viewer.scene.scene.add(carMesh);
+
+                viewer.scene.view.position.set(camX, camY, camZ + 10); 
+
+                viewer.scene.view.lookAt(new THREE.Vector3(camX, camY, camZ));
             });
         }
     </script>

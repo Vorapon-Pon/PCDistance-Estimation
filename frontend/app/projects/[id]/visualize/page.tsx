@@ -21,6 +21,8 @@ export default function VisualizePage() {
   const [projectData, setProjectData] = useState<any>(null);
   const [potreeUrl, setPotreeUrl] = useState<string>('');
   
+  const [viewMode, setViewMode] = useState<'split' | '3d' | '360'>('split');
+
   const [activeData, setActiveData] = useState({
     id: '',
     filename: '',
@@ -192,15 +194,56 @@ export default function VisualizePage() {
         </div>
       </div>
 
+      <div className="flex bg-[#141414] p-1 rounded-lg border border-neutral-800">
+        <button 
+          onClick={() => setViewMode('3d')} 
+          className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${viewMode === '3d' ? 'bg-neutral-700 text-white shadow' : 'text-neutral-500 hover:text-neutral-300'}`}
+        >
+          3D Only
+        </button>
+        <button 
+          onClick={() => setViewMode('split')} 
+          className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${viewMode === 'split' ? 'bg-neutral-700 text-white shadow' : 'text-neutral-500 hover:text-neutral-300'}`}
+        >
+          Split View
+        </button>
+        <button 
+          onClick={() => setViewMode('360')} 
+          className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${viewMode === '360' ? 'bg-neutral-700 text-white shadow' : 'text-neutral-500 hover:text-neutral-300'}`}
+        >
+          360 Only
+        </button>
+      </div>
+
       {/* Main Content: Split View */}
       <div className="flex flex-col md:flex-row h-[70vh] border-b border-neutral-800 min-h-0">
         
         {/* LEFT: Point Cloud View */}
-        <div className="flex-1 relative border-r border-neutral-800 group bg-black min-w-0">
+        <div 
+          id="point-cloud-container" 
+          className={`relative border-neutral-800 group bg-black min-w-0 ${viewMode === '360' ? 'hidden' : 'flex-1'} ${viewMode === 'split' ? 'border-r' : ''}`}
+        >
           <div className="absolute top-4 left-4 z-10 bg-black/60 px-3 py-1 rounded text-xs font-mono border border-neutral-700">
             3D Point Cloud View
           </div>
           
+          <button 
+            onClick={() => {
+              const container = document.getElementById('point-cloud-container');
+              if (container) {
+                if (document.fullscreenElement) {
+                  document.exitFullscreen();
+                } else {
+                  container.requestFullscreen();
+                }
+              }
+            }}
+            className="absolute bottom-4 right-4 z-10 bg-black/60 p-2 rounded hover:bg-black/80 text-white transition-all border border-neutral-700 flex items-center justify-center opacity-50 hover:opacity-100"
+            title="Toggle Fullscreen"
+          >
+            <Maximize2 size={18} />
+          </button>
+
           <div className="w-full h-full bg-black">
              {potreeUrl ? (
                <iframe 
@@ -219,7 +262,7 @@ export default function VisualizePage() {
         </div>
 
         {/* RIGHT: Panorama View */}
-        <div className="flex-1 relative bg-[#0A0A0A] flex flex-col min-w-0">
+        <div className={`relative bg-[#0A0A0A] flex flex-col min-w-0 ${viewMode === '3d' ? 'hidden' : 'flex-1'}`}>
           <div className="p-4 flex items-center justify-between border-b border-neutral-800/50 bg-neutral-900/30 flex-shrink-0">
             <span className="text-xs font-mono text-neutral-400 truncate">
               {activeData.filename} ({currentIndex + 1} / {imageList.length})
@@ -237,15 +280,15 @@ export default function VisualizePage() {
                 </div>
              </div>
 
-             {/* Thumbnail Image Select */}
+             {/* แถบ Thumbnail */}
              {imageList.length > 1 && (
                <div className="w-full h-20 flex-shrink-0">
-                 <div className="flex gap-2 overflow-x-auto overflow-y-clip h-full pb-2 custom-scrollbar items-center">
+                 <div className="flex gap-2 overflow-x-auto h-full pb-2 custom-scrollbar items-center">
                    {imageList.map((img, idx) => (
                      <div 
                        key={img.id} 
                        onClick={() => handleSelectImage(idx)}
-                       className={`relative flex-shrink-0 w-21 h-14 rounded overflow-hidden cursor-pointer border-2 transition-all ${idx === currentIndex ? 'border-[#B8AB9C] opacity-100' : 'border-neutral-700 opacity-50 hover:opacity-100'}`}
+                       className={`relative flex-shrink-0 w-24 h-16 rounded overflow-hidden cursor-pointer border-2 transition-all ${idx === currentIndex ? 'border-blue-500 opacity-100' : 'border-neutral-700 opacity-50 hover:opacity-100'}`}
                      >
                        <img src={img.imageUrl} alt={img.filename} className="w-full h-full object-cover" />
                        <div className="absolute bottom-1 right-1 bg-black/60 rounded px-1">
