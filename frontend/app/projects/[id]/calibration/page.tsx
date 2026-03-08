@@ -421,16 +421,31 @@ export default function CalibrationPage() {
                 { label: 'Point Opacity', key: 'opacity', min: 0, max: 100, step: 1, unit: '%' }
               ].map((item) => (
                 <div key={item.key}>
-                  <div className="flex justify-between items-end mb-2">
+                  <div className="flex justify-between items-center mb-2">
                     <label className="text-xs text-neutral-400">{item.label}</label>
-                    <span className="text-xs font-mono text-[#B8AB9C]">
-                      {offset[item.key as keyof typeof offset] > 0 && item.key !== 'opacity' ? '+' : ''}
-                      {offset[item.key as keyof typeof offset].toFixed(item.step === 1 ? 0 : 2)}{item.unit}
-                    </span>
+                    
+                    {/* ช่อง Input ตัวเลขที่พิมพ์ได้ */}
+                    <div className="flex items-center bg-neutral-900 rounded-md border border-neutral-800 focus-within:border-[#B8AB9C] transition-colors">
+                      <input 
+                        type="number"
+                        min={item.min}
+                        max={item.max}
+                        step={item.step}
+                        value={offset[item.key as keyof typeof offset]}
+                        onChange={(e) => handleSliderChange(e, item.key)}
+                        disabled={isLoading}
+                        className="w-16 bg-transparent text-right py-0.5 px-1 text-xs font-mono text-[#B8AB9C] outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <span className="text-[10px] text-neutral-500 pr-2 pl-1 select-none">{item.unit}</span>
+                    </div>
                   </div>
+
+                  {/* สไลด์เดอร์แบบเดิม */}
                   <input 
                     type="range" 
-                    min={item.min} max={item.max} step={item.step}
+                    min={item.min} 
+                    max={item.max} 
+                    step={item.step}
                     value={offset[item.key as keyof typeof offset]}
                     onChange={(e) => handleSliderChange(e, item.key)}
                     disabled={isLoading}
