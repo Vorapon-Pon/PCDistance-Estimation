@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/utils/client';
-import { BarChart3, Search, Maximize2, ZoomIn, ZoomOut, Download, Copy, ChevronLeft, ChevronRight, Info, ImageIcon, Compass, RotateCw } from 'lucide-react';
+import { BarChart3, Search, Maximize2, ZoomIn, ZoomOut, Download, Copy, ChevronLeft, ChevronRight, Info, ImageIcon, Compass, RotateCw, Loader2, Crosshair } from 'lucide-react';
 import { toast } from 'sonner';
 import Script from 'next/script';
 
@@ -11,6 +11,10 @@ export default function VisualizePage() {
   const params = useParams();
   const projectId = params.id as string;
   const supabase = createClient();
+  const router = useRouter();
+
+  const [isSlicing, setIsSlicing] = useState(false);
+  const [sliceMessage, setSliceMessage] = useState('');
 
   const panoramaRef = useRef<HTMLDivElement>(null);
   const [viewer, setViewer] = useState<any>(null);
@@ -49,7 +53,7 @@ export default function VisualizePage() {
           .select('potree_url, storage_path')
           .eq('project_id', projectId)
           .single();
-
+          
         if (pointCloud?.potree_url) {
           setPotreeUrl(pointCloud.potree_url);
         } else {
@@ -163,6 +167,99 @@ export default function VisualizePage() {
     toast.success('Copied to clipboard!');
   };
 
+  const handleStartCalibration = async () => {
+    const currentImage = imageList[currentIndex];
+    if (!currentImage || !projectData) {
+      alert("ไม่พบข้อมูลรูปภาพหรือโปรเจกต์");
+      return;
+    }
+
+    setIsSlicing(true);
+    setSliceMessage("Sending Data to Slicing...");
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error("ไม่พบข้อมูลผู้ใช้งาน กรุณาล็อกอินใหม่");
+      }
+
+    const { data: pointCloud } = await supabase
+      .from('project_point_clouds')
+      .select('storage_path')
+      .eq('project_id', projectId)
+      .single();
+
+    const { data: camPos, error: camError } = await supabase
+      .from('camera_position')
+      .select('x, y, z')
+      .eq('image_id', currentImage.id)
+      .single();
+
+    if (camError || !camPos) {
+        throw new Error("ไม่พบพิกัด X,Y,Z ของรูปภาพนี้ โปรดตรวจสอบว่าอัปโหลดไฟล์ Camera Position (.csv, txt) ครบถ้วนและชื่อไฟล์ตรงกันหรือไม่");
+    }
+
+    try {
+      const startRes = await fetch('http://127.0.0.1:8000/api/slice-pointcloud', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: projectData.id,
+          bucket_name: BUCKET_NAME, 
+          file_path: pointCloud?.storage_path,
+          image_id: currentImage.id,
+          user_id: user.id,
+          center_x: camPos.x,
+          center_y: camPos.y, 
+          center_z: camPos.z,
+          radius: 50.0
+        })
+      });
+
+      if (!startRes.ok) {
+        const errorDetail = await startRes.text(); 
+        console.error("Error Details:", errorDetail);
+        throw new Error(`Error ${startRes.status}: ${errorDetail}`);
+      }
+
+      // 3. เริ่มระบบ Polling เช็คสถานะทุกๆ 3 วินาที
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`http://127.0.0.1:8000/api/slice-status/${projectData.id}`);
+          if (!statusRes.ok) return; // ถ้ายิงไม่เข้า ให้รอรอบถัดไป
+
+          const statusData = await statusRes.json();
+          setSliceMessage(statusData.message); // อัปเดตข้อความบนหน้าจอ (เช่น "Downloading...", "Slicing...")
+
+          if (statusData.status === 'completed') {
+            // 4. ถ้าสำเร็จ หยุด Polling และเด้งไปหน้า Calibration
+            clearInterval(pollInterval);
+            setSliceMessage("สำเร็จ! กำลังพาท่านไปยังหน้า Calibration...");
+            
+            setTimeout(() => {
+              setIsSlicing(false);
+              router.push(`/projects/${projectData.id}/calibration`);
+              //router.push(`/projects/${projectData.id}/calibration&imageId=${currentImage.id}`);
+              //router.push(`/calibration?projectId=${projectData.id}&imageId=${currentImage.id}`);
+            }, 1500); // ดีเลย์นิดนึงให้ผู้ใช้อ่านข้อความทัน
+            
+          } else if (statusData.status === 'error') {
+            // 5. ถ้าพัง ให้หยุด Polling และแจ้งเตือน
+            clearInterval(pollInterval);
+            alert(`เกิดข้อผิดพลาดจากเซิร์ฟเวอร์: ${statusData.message}`);
+            setIsSlicing(false);
+          }
+        } catch (pollErr) {
+          console.error("Polling Error:", pollErr);
+        }
+      }, 3000); // 3000 ms 
+
+    } catch (error) {
+      console.error("Start Slicing Error:", error);
+      alert("ไม่สามารถเชื่อมต่อกับ Python API ได้");
+      setIsSlicing(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-neutral-900 text-white">
@@ -269,6 +366,14 @@ export default function VisualizePage() {
             </span>
           </div>
 
+          <button 
+            onClick={handleStartCalibration}
+            className="flex items-center gap-2 mx-4 mt-1.5 px-3 py-1.5 bg-[#B8AB9C]/50 text-[#B8AB9C] hover:bg-[#8e8479] hover:text-white rounded text-xs font-medium transition-colors border border-[#B8AB9C]/50"
+            >
+            <Crosshair size={14} />
+            Calibrate This View
+          </button>
+
           <div className="flex-1 flex flex-col p-4 gap-4 min-h-0">
              {/* 360 Viewer */}
              <div className="w-full flex-1 bg-neutral-900 rounded shadow-xl overflow-hidden relative min-h-0">
@@ -373,6 +478,22 @@ export default function VisualizePage() {
         </div>
 
       </div>
+
+      {isSlicing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#141414] p-8 rounded-xl border border-neutral-800 flex flex-col items-center max-w-md w-full text-center shadow-2xl">
+            <Loader2 className="w-12 h-12 text-neutral-700 animate-spin mb-4" />
+            <h3 className="text-lg font-semibold text-white mb-2">Preparing 3D Calibration Data</h3>
+            <p className="text-sm text-neutral-400 mb-6">{sliceMessage}</p>
+            
+            {/* แสดง Progress Bar จำลอง (วิ่งวนไปเรื่อยๆ) */}
+            <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+              <div className="h-full bg-[#B8AB9C] w-1/3 animate-[slide_2s_ease-in-out_infinite] rounded-full"></div>
+            </div>
+            <p className="text-xs text-neutral-500 mt-4">Please do not close this window.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
