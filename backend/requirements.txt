@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+sqlmodel
+psycopg2-binary
+python-multipart
+python-dotenv
+passlib[bcrypt]
+supabase
+numpy
+open3d
+laspy
