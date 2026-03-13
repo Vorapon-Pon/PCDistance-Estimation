@@ -361,7 +361,7 @@ export default function UploadPage() {
     <div className="p-6 text-neutral-200 min-h-screen bg-neutral-900">
       {/* 1. Header Section */}
       <div className="mb-6">
-        <h1 className="text-xl font-semibold flex pb-4 border-b border-neutral-800 items-center gap-3 mb-6">
+        <h1 className="text-xl text-semibold flex pb-4 border-b border-neutral-800 items-center gap-3 mb-6">
           <Upload className="text-neutral-200" size={28} />
           Upload data
         </h1>

@@ -12,8 +12,8 @@ interface ProjectImage {
   storage_path: string;
   filename: string;
   url: string;
-  detection_status?: string;  // เพิ่มคอลัมน์นี้
-  detection_message?: string; // เพิ่มคอลัมน์นี้
+  detection_status?: string;  
+  detection_message?: string; 
 }
 
 interface DetectedObject {
@@ -35,6 +35,8 @@ export default function EstimationPage() {
   const [images, setImages] = useState<ProjectImage[]>([]);
   const [selectedImage, setSelectedImage] = useState<ProjectImage | null>(null);
   const [detectedObjects, setDetectedObjects] = useState<DetectedObject[]>([]);
+
+  const [classColors, setClassColors] = useState<Record<string, string>>({});
   
   const [isLoading, setIsLoading] = useState(true);
   const [isDetecting, setIsDetecting] = useState(false);
@@ -47,10 +49,23 @@ export default function EstimationPage() {
   const [currentImageStatus, setCurrentImageStatus] = useState<string>('pending');
 
   useEffect(() => {
-    const fetchImages = async () => {
+    const fetchImagesAndColors = async () => {
       if (!projectId) return;
       setIsLoading(true);
       try {
+        const { data: classData } = await supabase
+          .from('project_classes')
+          .select('name, color')
+          .eq('project_id', projectId);
+
+        if (classData) {
+          const colorMap: Record<string, string> = {};
+          classData.forEach(cls => {
+            colorMap[cls.name] = cls.color;
+          });
+          setClassColors(colorMap);
+        }
+
         const { data, error } = await supabase
           .from('project_images')
           .select('id, storage_path, detection_status, detection_message')
@@ -76,13 +91,13 @@ export default function EstimationPage() {
           setSelectedImage(formattedImages[0]);
         }
       } catch (error) {
-        console.error("Error fetching images:", error);
+        console.error("Error fetching data:", error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchImages();
+    fetchImagesAndColors();
   }, [projectId]);
 
   const fetchDetectedObjects = async (imageId: string) => {
@@ -109,7 +124,6 @@ export default function EstimationPage() {
   useEffect(() => {
     if (!selectedImage) return;
 
-    // ดึงสถานะล่าสุดจาก DB ทันทีเผื่อมีการอัปเดตระหว่างเปลี่ยนรูป
     const fetchCurrentStatus = async () => {
       const { data } = await supabase
         .from('project_images')
@@ -250,21 +264,25 @@ export default function EstimationPage() {
     return acc;
   }, {} as Record<string, { count: number, totalDist: number, totalConf: number }>);
 
+  const getClassColor = (className: string) => {
+    return classColors[className] || '#10b981'; // Emerald 500 default
+  };
+
   if (isLoading) {
-    return <div className="min-h-screen bg-[#121212] flex items-center justify-center text-white"><Loader2 className="animate-spin" size={32} /></div>;
+    return <div className="min-h-screen bg-neutral-950 flex items-center justify-center text-white"><Loader2 className="animate-spin" size={32} /></div>;
   }
 
   return (
-    <div className="min-h-screen bg-neutral-900 text-neutral-300 p-6 space-y-6">
+    <div className="min-h-screen bg-neutral-900 text-neutral-300 p-4 space-y-6">
       
       {/* Header */}
       <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <div className="p-2 rounded-lg">
-            <ChartColumn className="text-white" size={24} />
+            <ChartColumn className="text-white" size={28} />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white">Estimation</h1>
+            <h1 className="text-xl text-semibold text-white">Estimation</h1>
           </div>
         </div>
         
@@ -298,7 +316,7 @@ export default function EstimationPage() {
         </div>
       </div>
 
-      {/* Image Browser */}
+      {/* Image Browser (เหมือนเดิม) */}
       <div className="bg-neutral-900/20 border border-zinc-800 rounded-xl p-4">
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-2 text-zinc-400 font-medium">
@@ -316,7 +334,6 @@ export default function EstimationPage() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={img.url} alt={img.filename} className={`w-full h-full object-cover ${isSelectionMode ? 'opacity-70' : ''}`} />
               
-              {/* ส่วนที่ต้องเพิ่ม: Checkbox ให้กดเลือกได้ */}
               {isSelectionMode && (
                 <div 
                   className="absolute inset-0 bg-black/20 flex items-center justify-center cursor-pointer" 
@@ -330,7 +347,6 @@ export default function EstimationPage() {
                 {img.filename.split('.')[0]}
               </div>
               
-              {/* โชว์ Badge สถานะ เฉพาะตอนไม่ได้เปิดโหมดเลือก */}
               {!isSelectionMode && (
                 <div className="absolute top-2 right-2">
                   {(img.detection_status === 'processing' || img.detection_status === 'queued') && (
@@ -352,7 +368,6 @@ export default function EstimationPage() {
       {/* Main Content Area */}
       {currentImageStatus === 'idle' || currentImageStatus === 'failed' ? (
         
-        // State 1: No Estimation Yet
         <div className="bg-[#1e1e1e] border border-zinc-800 rounded-xl flex flex-col items-center justify-center p-20 min-h-[400px]">
           <Scan size={48} className="text-zinc-600 mb-4" />
           <h2 className="text-xl font-bold text-white mb-2">
@@ -374,7 +389,6 @@ export default function EstimationPage() {
 
       ) : currentImageStatus === 'processing' ? (
         
-        // State 2: Processing
         <div className="bg-[#1e1e1e] border border-zinc-800 rounded-xl flex flex-col items-center justify-center p-20 min-h-[400px]">
           <Loader2 size={48} className="text-emerald-500 mb-4 animate-spin" />
           <h2 className="text-xl font-bold text-white mb-2">Analyzing Image...</h2>
@@ -385,7 +399,6 @@ export default function EstimationPage() {
 
       ) : (
 
-        // State 3: Estimation Results (Completed)
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             
@@ -402,22 +415,31 @@ export default function EstimationPage() {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={selectedImage?.url} alt="Result" className="w-full h-full object-cover" />
                 
-                {detectedObjects.map((obj) => (
-                  <div 
-                    key={obj.id} 
-                    className="absolute border-2 border-emerald-500 bg-emerald-500/10 pointer-events-none"
-                    style={{
-                      left: `${obj.bbox_xmin * 100}%`,
-                      top: `${obj.bbox_ymin * 100}%`,
-                      width: `${(obj.bbox_xmax - obj.bbox_xmin) * 100}%`,
-                      height: `${(obj.bbox_ymax - obj.bbox_ymin) * 100}%`
-                    }}
-                  >
-                    <div className="absolute -top-6 left-[-2px] bg-emerald-500 text-zinc-900 text-[10px] font-bold px-1.5 py-0.5 rounded-t whitespace-nowrap">
-                      {obj.class_name}: {obj.distance_from_camera ? `${obj.distance_from_camera.toFixed(2)}m` : 'N/A'}
+                {detectedObjects.map((obj) => {
+                  const objColor = getClassColor(obj.class_name);
+                  
+                  return (
+                    <div 
+                      key={obj.id} 
+                      className="absolute pointer-events-none"
+                      style={{
+                        left: `${obj.bbox_xmin * 100}%`,
+                        top: `${obj.bbox_ymin * 100}%`,
+                        width: `${(obj.bbox_xmax - obj.bbox_xmin) * 100}%`,
+                        height: `${(obj.bbox_ymax - obj.bbox_ymin) * 100}%`,
+                        border: `2px solid ${objColor}`,         
+                        backgroundColor: `${objColor}33`         
+                      }}
+                    >
+                      <div 
+                        className="absolute -top-6 left-[-2px] text-zinc-900 text-[10px] font-bold px-1.5 py-0.5 rounded-t whitespace-nowrap"
+                        style={{ backgroundColor: objColor }}   
+                      >
+                        {obj.class_name}: {obj.distance_from_camera ? `${obj.distance_from_camera.toFixed(2)}m` : 'N/A'}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -442,23 +464,29 @@ export default function EstimationPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {detectedObjects.map((obj, idx) => (
-                        <tr key={obj.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                          <td className="py-3 text-zinc-500">{idx + 1}</td>
-                          <td className="py-3 text-white capitalize flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-emerald-500"></div> {obj.class_name}
-                          </td>
-                          <td className="py-3 text-emerald-400 font-mono">⇋ {obj.distance_from_camera.toFixed(2)}m</td>
-                          <td className="py-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-24 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                                <div className="h-full bg-emerald-500" style={{ width: `${obj.confidence * 100}%` }}></div>
+                      {detectedObjects.map((obj, idx) => {
+                        const objColor = getClassColor(obj.class_name);
+                        return (
+                          <tr key={obj.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                            <td className="py-3 text-zinc-500">{idx + 1}</td>
+                            <td className="py-3 text-white capitalize flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: objColor }}></div> 
+                              {obj.class_name}
+                            </td>
+                            <td className="py-3 font-mono" style={{ color: objColor }}>
+                              ⇋ {obj.distance_from_camera.toFixed(2)}m
+                            </td>
+                            <td className="py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-24 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                                  <div className="h-full" style={{ width: `${obj.confidence * 100}%`, backgroundColor: objColor }}></div>
+                                </div>
+                                <span className="text-zinc-400 text-xs">{Math.round(obj.confidence * 100)}%</span>
                               </div>
-                              <span className="text-zinc-400 text-xs">{Math.round(obj.confidence * 100)}%</span>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 ) : (
@@ -500,18 +528,23 @@ export default function EstimationPage() {
               <div className="bg-[#1e1e1e] border border-zinc-800 rounded-xl p-4">
                 <h3 className="font-semibold text-white mb-4">Class Breakdown</h3>
                 <div className="space-y-4">
-                  {Object.entries(classBreakdown).map(([className, data]) => (
-                    <div key={className} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2 capitalize text-white">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div> {className}
-                        <span className="text-xs bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-400">{data.count}</span>
+                  {Object.entries(classBreakdown).map(([className, data]) => {
+                    const clsColor = getClassColor(className);
+                    return (
+                      <div key={className} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2 capitalize text-white">
+                          {/* 💡 จุดสีในหน้าสรุป */}
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: clsColor }}></div> 
+                          {className}
+                          <span className="text-xs bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-400">{data.count}</span>
+                        </div>
+                        <div className="flex items-center gap-4 text-neutral-500 text-xs">
+                          <span>avg {(data.totalDist / data.count).toFixed(1)}m</span>
+                          <span>{Math.round((data.totalConf / data.count) * 100)}%</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-4 text-neutral-500 text-xs">
-                        <span>avg {(data.totalDist / data.count).toFixed(1)}m</span>
-                        <span>{Math.round((data.totalConf / data.count) * 100)}%</span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

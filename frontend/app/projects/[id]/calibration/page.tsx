@@ -378,7 +378,7 @@ export default function CalibrationPage() {
             <Target size={28} />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-white">Calibration</h1>
+            <h1 className="text-xl text-semibold text-white">Calibration</h1>
           </div>
         </div>
       </div>

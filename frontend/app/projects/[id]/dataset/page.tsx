@@ -97,7 +97,7 @@ export default function DatasetPage() {
       {/* Header */}
       <div className="flex items-center border-b pb-4 border-neutral-800 gap-3 mb-6">
         <Database className=" text-white" size={28}/>
-        <h1 className="text-xl font-semibold tracking-wide">Dataset</h1>
+        <h1 className="text-xl text-semibold tracking-wide">Dataset</h1>
       </div>
 
       {/* Toolbar: Title, Search, Sort, Action Button */}

@@ -301,7 +301,7 @@ useEffect(() => {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <BarChart3 className="text-white" size={28} />
-            <h1 className="text-xl font-semibold">Visualize: {projectData?.project_name || 'Unknown Project'}</h1>
+            <h1 className="text-xl text-semibold">Visualize: {projectData?.project_name || 'Unknown Project'}</h1>
           </div>
         </div>
       </div>
