@@ -13,6 +13,10 @@ export default function VisualizePage() {
   const supabase = createClient();
   const router = useRouter();
 
+  const [status, setStatus] = useState<string>('checking'); 
+  const [progress, setProgress] = useState<number>(0);
+  const [statusMessage, setStatusMessage] = useState<string>('กำลังตรวจสอบสถานะ...');
+
   const [isSlicing, setIsSlicing] = useState(false);
   const [sliceMessage, setSliceMessage] = useState('');
 
@@ -131,7 +135,18 @@ export default function VisualizePage() {
     if (activeData.imageUrl) initPannellum();
   }, [activeData.imageUrl]);
 
-  const iframeSrc = `/potree/viewer.html?cloudUrl=${encodeURIComponent(potreeUrl)}`;
+const iframeSrc = `/potree/viewer.html?cloudUrl=${encodeURIComponent(potreeUrl)}`;
+
+useEffect(() => {
+  const iframe = document.getElementById('potree-iframe') as HTMLIFrameElement;
+
+  if (iframe && iframe.contentWindow && activeData?.coords) {
+    iframe.contentWindow.postMessage({
+      type: 'UPDATE_CAMERA',
+      coords: activeData.coords
+    }, '*');
+  }
+}, [activeData]); 
 
   const handleNextImage = () => {
     if (imageList.length === 0) return;

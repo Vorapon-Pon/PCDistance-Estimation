@@ -15,7 +15,7 @@ interface SceneData {
   plyUrl: string;
   pointsCount: string;
   radius: string;
-  cameraPos: string;
+  cameraPos: { x: number; y: number; z: number };
   original: { heading: number; pitch: number; roll: number };
 }
 
@@ -142,7 +142,11 @@ export default function CalibrationPage() {
           plyUrl: finalPlyUrl,
           pointsCount: pointsCountStr,
           radius: '50m',
-          cameraPos: `(${cameraData?.x?.toFixed(1) || 0}, ${cameraData?.y?.toFixed(1) || 0}, ${cameraData?.z?.toFixed(1) || 0})`,
+          cameraPos: {
+            x: cameraData?.x || 0, 
+            y: cameraData?.y || 0, 
+            z: cameraData?.z || 0 
+          },
           original: { 
             heading: cameraData?.heading || 0, 
             pitch: cameraData?.pitch || 0, 
@@ -209,11 +213,11 @@ export default function CalibrationPage() {
 
     if (sceneData.plyUrl) {
       const plyLoader = new PLYLoader();
-      //console.log("Starting to load PLY from:", sceneData.plyUrl);
+      console.log("Starting to load PLY from:", sceneData.plyUrl);
 
       plyLoader.load(sceneData.plyUrl, (geometry) => {
         geometry.rotateX(-Math.PI / 2);
-
+        /*
         const positions = geometry.attributes.position;
         const count = positions.count;
         const colors = new Float32Array(count * 3);
@@ -236,9 +240,9 @@ export default function CalibrationPage() {
           colors[i * 3 + 2] = color.b;
         }
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
+        */
         const material = new THREE.PointsMaterial({ 
-          size: 0.05, 
+          size: 0.1, 
           vertexColors: true, 
           transparent: true,
           opacity: offset.opacity / 100
@@ -248,7 +252,10 @@ export default function CalibrationPage() {
         pointsRef.current = points;
         materialRef.current = material;
         scene.add(points);
-      }, undefined, (err) => console.error("Error loading PLY", err));
+      },
+      (xhr) => {
+          console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+      },(err) => console.error("Error loading PLY", err));
     }
 
     const animate = () => {
@@ -293,7 +300,8 @@ export default function CalibrationPage() {
   console.log("yaw" + finalHeading)
   console.log("pit" + finalPitch)
   console.log("rol" + finalRoll)
-
+  
+  points.position.set(0, 0, 0);
   points.rotation.set(finalPitch, finalHeading, finalRoll, 'ZYX');
 };
   // --- 3. Update Rotation & Opacity ---
@@ -507,8 +515,16 @@ export default function CalibrationPage() {
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Camera Position</p>
                 <div className="flex items-center gap-2 text-xs text-neutral-300 font-mono">
-                  <MapPin size={12} className="text-neutral-500" />
-                  {isLoading ? '...' : sceneData?.cameraPos}
+                  <MapPin size={12} className="items-start text-neutral-500" />
+                  {isLoading ? (
+                    '...'
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      <span>X: {sceneData?.cameraPos.x}</span>
+                      <span>Y: {sceneData?.cameraPos.y}</span>
+                      <span>Z: {sceneData?.cameraPos.z}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
