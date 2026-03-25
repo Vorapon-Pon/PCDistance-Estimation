@@ -44,8 +44,9 @@ export default function Sidebar() {
 
     useEffect(() => {
     const isInProject = pathname.startsWith('/projects/') && pathname !== '/projects';
+    const isInSettings = pathname.startsWith('/settings/') && pathname !== '/settings';
 
-        if (isInProject) {
+        if (isInProject || isInSettings ) {
             setCollapsed(true);
         } else {
             setCollapsed(false); 
@@ -109,7 +110,7 @@ export default function Sidebar() {
 
             {/* Bottom Navigation */}
             <div className='px-4 py-2 space-y-2'>
-                <Link href='/settings' className={getLinkClasses('/settings')} title={collapsed ? "Settings" : ""}>
+                <Link href='/settings/plans' className={getLinkClasses('/settings')} title={collapsed ? "Settings" : ""}>
                     <Settings size={20} />
                     {!collapsed && <span className='whitespace-nowrap'>Settings</span>}
                 </Link>

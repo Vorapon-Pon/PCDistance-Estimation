@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { Play, ChartColumn, CheckSquare, Search, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize, CheckCircle2, Image as ImageIcon, Loader2, Scan, Square, AlertCircle } from 'lucide-react';
 import { createClient } from '@/utils/client';
+import { processEstimateCredits } from './actions';
+import CreditConfirmModal from '@/components/projects/CreditConfirmModal';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -47,6 +49,11 @@ export default function EstimationPage() {
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   
   const [currentImageStatus, setCurrentImageStatus] = useState<string>('pending');
+
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [isPaying, setIsPaying] = useState(false); 
+  const [idsToProcess, setIdsToProcess] = useState<string[]>([]);
+  const CREDITS_PER_IMAGE = 2;
 
   useEffect(() => {
     const fetchImagesAndColors = async () => {
@@ -115,7 +122,10 @@ export default function EstimationPage() {
     if (selectedImage) {
       setCurrentImageStatus(selectedImage.detection_status || 'idle');
       setStatusMessage(selectedImage.detection_message || '');
-      setIsDetecting(selectedImage.detection_status === 'processing');
+      setIsDetecting(
+        selectedImage.detection_status === 'processing' || 
+        selectedImage.detection_status === 'pending'
+      );
       
       fetchDetectedObjects(selectedImage.id);
     }
@@ -134,7 +144,10 @@ export default function EstimationPage() {
       if (data) {
         setCurrentImageStatus(data.detection_status || 'idle');
         setStatusMessage(data.detection_message || '');
-        setIsDetecting(data.detection_status === 'processing');
+        setIsDetecting(
+        selectedImage.detection_status === 'processing' || 
+        selectedImage.detection_status === 'pending'
+      );
       }
     };
     fetchCurrentStatus();
@@ -167,14 +180,14 @@ export default function EstimationPage() {
           setCurrentImageStatus(updatedImage.detection_status);
           setStatusMessage(updatedImage.detection_message || '');
 
-          if (updatedImage.detection_status === 'completed') {
-            setIsDetecting(false);
+          if (updatedImage.detection_status === 'processing' || updatedImage.detection_status === 'pending') {
+            setIsDetecting(true); 
+          } else if (updatedImage.detection_status === 'completed') {
+            setIsDetecting(false); 
             setIsBatchProcessing(false);
-            fetchDetectedObjects(updatedImage.id);
-          }
-
-          if (updatedImage.detection_status === 'failed') {
-            setIsDetecting(false);
+            fetchDetectedObjects(updatedImage.id); 
+          } else if (updatedImage.detection_status === 'failed') {
+            setIsDetecting(false); 
             setIsBatchProcessing(false);
             alert(`Detection Error: ${updatedImage.detection_message}`);
           }
@@ -184,6 +197,72 @@ export default function EstimationPage() {
 
     return () => { supabase.removeChannel(channel); };
   }, [projectId, selectedImage]);
+
+  const handlePrepareDetection = () => {
+    const ids = isSelectionMode ? Array.from(selectedImageIds) : [selectedImage?.id];
+    const validIds = ids.filter(Boolean) as string[];
+    
+    if (validIds.length === 0) {
+      alert("Please select at least one image.");
+      return;
+    }
+
+    setIdsToProcess(validIds);
+    setIsConfirmModalOpen(true); 
+  };
+
+  const handleConfirmDetection = async () => {
+    setIsPaying(true);
+    
+    setStatusMessage('Deducting credits...');
+    const totalCost = idsToProcess.length * CREDITS_PER_IMAGE;
+    
+    const creditResult = await processEstimateCredits(
+      totalCost, 
+      `Distance estimation for ${idsToProcess.length} image(s)`
+    );
+
+    setIsPaying(false);
+
+    if (!creditResult.success) {
+      alert(creditResult.error);
+      setIsConfirmModalOpen(false); 
+      return;
+    }
+
+    setIsConfirmModalOpen(false); 
+    setIsBatchProcessing(true);
+    setIsDetecting(true);
+    setCurrentImageStatus('processing');
+    setStatusMessage('Sending request to AI...');
+    setDetectedObjects([]); 
+    
+    try {
+      const res = await fetch(`${API_URL}/api/run-detection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: projectId,
+          image_id: idsToProcess,
+          bucket_name: 'project_files'
+        })
+      });
+
+      if (!res.ok) throw new Error('Failed to start detection');
+
+      if (isSelectionMode) {
+        setIsSelectionMode(false);
+        setSelectedImageIds(new Set());
+      }
+
+    } catch (error) {
+      console.error(error);
+      alert("Error connecting to backend");
+      setIsDetecting(false);
+      setCurrentImageStatus('failed');
+      setStatusMessage('Connection failed');
+    }
+  };
 
   const handleRunDetection = async () => {
     const idsToProcess = isSelectionMode ? Array.from(selectedImageIds) : [selectedImage?.id];
@@ -306,7 +385,7 @@ export default function EstimationPage() {
           
           <button 
             id="btn-run-detection"
-            onClick={handleRunDetection}
+            onClick={handlePrepareDetection}
             disabled={isBatchProcessing || isDetecting || (isSelectionMode && selectedImageIds.size === 0)}
             className="flex items-center gap-2 px-4 py-2 bg-[#B8AB9C] hover:bg-[#B8AB9C]/70 text-neutral-900 font-semibold rounded-lg text-sm transition-colors disabled:opacity-50"
           >
@@ -379,7 +458,7 @@ export default function EstimationPage() {
               : 'Select an image and click "Run Detection" to send it to the backend for object detection and distance estimation.'}
           </p>
           <button 
-            onClick={handleRunDetection}
+            onClick={handlePrepareDetection}
             className="flex items-center gap-2 px-6 py-3 bg-[#B8AB9C] hover:bg-[#B8AB9C]/70 text-zinc-900 font-semibold rounded-lg transition-colors shadow-lg shadow-[#B8AB9C]/20"
           >
             <Scan size={18} />
@@ -387,7 +466,7 @@ export default function EstimationPage() {
           </button>
         </div>
 
-      ) : currentImageStatus === 'processing' ? (
+      ) : (currentImageStatus === 'processing' || currentImageStatus === 'pending')? (
         
         <div className="bg-[#1e1e1e] border border-zinc-800 rounded-xl flex flex-col items-center justify-center p-20 min-h-[400px]">
           <Loader2 size={48} className="text-emerald-500 mb-4 animate-spin" />
@@ -552,6 +631,19 @@ export default function EstimationPage() {
 
         </div>
       )}
+      <CreditConfirmModal 
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        onConfirm={handleConfirmDetection}
+        title="Confirm Estimation"
+        isLoading={isPaying}
+        totalCost={idsToProcess.length * CREDITS_PER_IMAGE}
+        details={[
+          { label: 'Images to process', value: `${idsToProcess.length} image(s)` },
+          { label: 'Cost per image', value: `${CREDITS_PER_IMAGE} credits` }
+        ]}
+      />
     </div>
+    
   );
 }

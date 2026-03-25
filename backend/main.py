@@ -72,7 +72,7 @@ class SliceRequest(BaseModel):
     center_y: float
     center_z: float
     radius: float = 50.0
-    
+
 def process_pointcloud(project_id: str, bucket_name: str, file_path: str):
     def update_status(status: str, message: str, progress: int):
         job_statuses[project_id] = {"status": status, "message": message, "progress": progress}
@@ -123,7 +123,7 @@ def process_pointcloud(project_id: str, bucket_name: str, file_path: str):
         # 3. Upload back to Supabase
         # ==========================================
         update_status("uploading", "Uploading converted files...", 70)
-        base_upload_path = f"converted/{project_id}"
+        base_upload_path = f"{project_id}/potree"
         
         all_files = []
         for root, _, files in os.walk(output_dir):
@@ -175,8 +175,7 @@ def process_pointcloud(project_id: str, bucket_name: str, file_path: str):
         # ==========================================
         update_status("completed", "Finalizing database...", 90)
         
-        potree_metadata_url = f"{SUPABASE_URL}/storage/v1/object/public/{bucket_name}/{base_upload_path}/metadata.json" 
-
+        potree_metadata_url = f"{SUPABASE_URL}/storage/v1/object/public/{bucket_name}/{base_upload_path}/metadata.json"
         db_update = (
             supabase.table("project_point_clouds")
             .update({
@@ -272,7 +271,7 @@ def process_slice_pointcloud(request: SliceRequest):
         o3d.io.write_point_cloud(output_ply_path, downpcd)
         
         slice_job_statuses[project_id] = {"status": "processing", "message": "Uploading slice to Supabase..."}
-        supabase_path = f"calibration/{project_id}/slice_50m.ply"
+        supabase_path = f"{project_id}/calibration/slice_{int(request.radius)}m.ply"
         
         with open(output_ply_path, "rb") as f:
             supabase.storage.from_(request.bucket_name).upload(
