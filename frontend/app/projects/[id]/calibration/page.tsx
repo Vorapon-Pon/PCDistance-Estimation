@@ -110,11 +110,11 @@ export default function CalibrationPage() {
           .single();
 
         let finalPlyUrl = calibData?.ply_file_url || '';
+        let radius = calibData?.radius;
         let pointsCountStr = calibData?.num_points ? `${calibData.num_points.toLocaleString()} points` : 'N/A';
         const BUCKET_NAME = 'project_files';
 
         console.log(finalPlyUrl)
-        console.log(pointsCountStr)
 
         if (!finalPlyUrl) {
           const { data: pcData } = await supabase
@@ -141,7 +141,7 @@ export default function CalibrationPage() {
           panoramaUrl: imageUrlData.publicUrl,
           plyUrl: finalPlyUrl,
           pointsCount: pointsCountStr,
-          radius: '50m',
+          radius: `${radius}m` ,
           cameraPos: {
             x: cameraData?.x || 0, 
             y: cameraData?.y || 0, 
@@ -154,7 +154,6 @@ export default function CalibrationPage() {
           }
         });
 
-        // 1.5 ถ้ามีค่า Calibration เดิม ให้เอามาอัปเดต Slider ด้วย
         if (calibData) {
           setOffset({
             headingOffset: calibData.heading_offset || 0,

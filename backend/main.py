@@ -216,7 +216,7 @@ def process_slice_pointcloud(request: SliceRequest):
     
     file_name = request.file_path.split("/")[-1]
     input_path = os.path.join(TEMP_DIR, f"slice_input_{file_name}")
-    output_ply_path = os.path.join(TEMP_DIR, f"slice_{project_id}.ply")
+    output_ply_path = os.path.join(TEMP_DIR, f"slice_{project_id}_{request.image_id}.ply")
     
     os.makedirs(TEMP_DIR, exist_ok=True)
     
@@ -271,7 +271,7 @@ def process_slice_pointcloud(request: SliceRequest):
         o3d.io.write_point_cloud(output_ply_path, downpcd)
         
         slice_job_statuses[project_id] = {"status": "processing", "message": "Uploading slice to Supabase..."}
-        supabase_path = f"{project_id}/calibration/slice_{int(request.radius)}m.ply"
+        supabase_path = f"{project_id}/calibration/master_slice.ply"
         
         with open(output_ply_path, "rb") as f:
             supabase.storage.from_(request.bucket_name).upload(
@@ -285,22 +285,45 @@ def process_slice_pointcloud(request: SliceRequest):
         try:
             slice_job_statuses[project_id]["message"] = "Updating database..."
             
-            calibration_data = {
-                "project_id": request.project_id,
-                "reference_image_id": request.image_id,
-                "ply_file_url": ply_public_url,
-                "user_id": request.user_id,
-                "num_points": len(downpcd.points)
-            }
-
-            response = supabase.table("project_calibrations").upsert(calibration_data).execute()   
-            
-            print(f"Database updated successfully: {response}")
+            # Check if Calibrate already done
+            existing_cal = (
+                supabase.table("project_calibrations")
+                .select("id")
+                .eq("project_id", request.project_id)
+                .execute()
+            )
+                
+            if len(existing_cal.data) > 0:
+                # if -> UPDATE existed row
+                response = supabase.table("project_calibrations").update({
+                    "reference_image_id": request.image_id,
+                    "ply_file_url": ply_public_url,
+                    "num_points": len(downpcd.points),
+                    "user_id": request.user_id,
+                    "radius" : int(request.radius)
+                }).eq("reference_image_id", request.image_id).execute()
+                print(f"Database updated successfully (Updated existing row)")
+            else:
+                # if not -> INSERT new row
+                response = supabase.table("project_calibrations").insert({
+                    "project_id": request.project_id,
+                    "reference_image_id": request.image_id,
+                    "ply_file_url": ply_public_url,
+                    "num_points": len(downpcd.points),
+                    "user_id": request.user_id,
+                    "heading_offset": 0.0,
+                    "pitch_offset": 0.0,
+                    "roll_offset": 0.0,
+                    "fov_offset": 0.0,
+                    "radius" : int(request.radius)
+                }).execute()
+                print(f"Database updated successfully (Inserted new row)")
         except Exception as db_err:
             print(f"Database Update Error: {db_err}")
             
-        os.remove(input_path)
-        os.remove(output_ply_path)
+        # Delete Temp after done
+        if os.path.exists(input_path): os.remove(input_path)
+        if os.path.exists(output_ply_path): os.remove(output_ply_path)
         
         slice_job_statuses[project_id] = {
             "status": "completed", 
@@ -310,8 +333,11 @@ def process_slice_pointcloud(request: SliceRequest):
         }
 
     except Exception as e:
-        slice_job_statuses[project_id] = {"status": "failed", "message": f"Error: {str(e)}"}
+        slice_job_statuses[project_id] = {"status": "error", "message": f"Error: {str(e)}"}
         print(f"Slice Error: {e}")
+
+        if os.path.exists(input_path): os.remove(input_path)
+        if os.path.exists(output_ply_path): os.remove(output_ply_path)
 
 def process_detection(request: DetectionRequest):
 

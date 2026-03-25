@@ -96,10 +96,11 @@ export const useUploadStore = create<UploadState>((set, get) => ({
             if (uploadError) continue;
 
             const text = await file.text();
-            const lines = text.split('\n').filter(line => line.trim() !== '');
+            const lines = text.split('\n').filter(line => line.trim() !== '' && line.includes(','));
             const recordsToInsert = lines.slice(1).map(line => {
                 const col = line.split(',');
                 const unixTime = parseFloat(col[2]);
+                const rowTimestamp = !isNaN(unixTime) ? new Date(unixTime * 1000).toISOString() : new Date().toISOString();
                 return {
                 project_id: projectId,
                 frame_index: parseInt(col[0]),
@@ -118,18 +119,14 @@ export const useUploadStore = create<UploadState>((set, get) => ({
                 accuracy_xyz: parseFloat(col[13])
                 }
             });
-
-            await supabase.from('camera_position').insert(recordsToInsert);
-            await supabase.from('camera_position_files').insert({
-                project_id: projectId,
-                user_id: currentUser.id,
-                filename: file.name,
-                row_count: recordsToInsert.length, 
-            });
-
-            hasCameraOrImageUpdates = true;
+              
+            const chunkSize = 500;
+            for (let j = 0; j < recordsToInsert.length; j += chunkSize) {
+              const chunk = recordsToInsert.slice(j, j + chunkSize);
+              const { error: insertError } = await supabase.from('camera_position').insert(chunk);
+              if (insertError) throw new Error(`Insert error: ${insertError.message}`);
+            }
         
-            await supabase.from('camera_position').insert(recordsToInsert);
             await supabase.from('camera_position_files').insert({
             project_id: projectId,
             user_id: currentUser.id,

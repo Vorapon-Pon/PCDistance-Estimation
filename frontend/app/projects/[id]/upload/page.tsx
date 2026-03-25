@@ -82,7 +82,19 @@ export default function UploadPage() {
     if (pcData) setPointClouds(pcData);
   }
 
-  // --- Drag & Drop support Folder ---
+  const filterAndSetFiles = (newFiles: File[]) => {
+    const validFiles = newFiles.filter(f => f.name.match(/\.(jpg|jpeg|png|las|bin|pcd|npy|txt|csv)$/i));
+    
+    setSelectedFiles(prev => {
+      const combined = [...prev, ...validFiles];
+      // กรองไฟล์ที่ชื่อและขนาดตรงกันออกไป ป้องกันการอัปโหลดเบิ้ล
+      return combined.filter((file, index, self) => 
+        index === self.findIndex((t) => t.name === file.name && t.size === file.size)
+      );
+    });
+  };
+
+  // --- Drag & Drop support Folder > 100 File in Browser ---
   const getFilesFromDataTransferItems = async (items: DataTransferItemList): Promise<File[]> => {
     const files: File[] = [];
     const readEntry = async (entry: any) => {
@@ -91,10 +103,21 @@ export default function UploadPage() {
         files.push(file);
       } else if (entry.isDirectory) {
         const reader = entry.createReader();
-        const entries = await new Promise<any[]>((resolve) => {
-          reader.readEntries((entries: any[]) => resolve(entries));
-        });
-        for (const child of entries) {
+        let allEntries: any[] = [];
+        
+        // Loop อ่านโฟลเดอร์ไปเรื่อยๆ จนกว่าไฟล์จะหมด (รอบละ 100 ไฟล์)
+        const readBatch = async () => {
+          const entries = await new Promise<any[]>((resolve) => {
+            reader.readEntries((entries: any[]) => resolve(entries));
+          });
+          if (entries.length > 0) {
+            allEntries = allEntries.concat(entries);
+            await readBatch(); 
+          }
+        };
+        await readBatch();
+        
+        for (const child of allEntries) {
           await readEntry(child);
         }
       }
@@ -114,15 +137,14 @@ export default function UploadPage() {
     if (isUploading) return;
 
     const files = await getFilesFromDataTransferItems(e.dataTransfer.items);
-    const validFiles = files.filter(f => f.name.match(/\.(jpg|jpeg|png|las|bin|pcd|npy|txt|csv)$/i));
-    setSelectedFiles(prev => [...prev, ...validFiles]);
+    filterAndSetFiles(files);
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
-      setSelectedFiles(prev => [...prev, ...Array.from(event.target.files as FileList)]);
+      filterAndSetFiles(Array.from(event.target.files));
     }
-    if (fileInputRef.current) fileInputRef.current.value = ''; // Reset
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const removeFile = (indexToRemove: number) => {
@@ -136,7 +158,6 @@ export default function UploadPage() {
     
     startGlobalUpload(projectId, batchName, selectedFiles);
     
-    // เคลียร์ Staging Area เพื่อให้แสดง Progress Bar ได้ชัดเจน
     setBatchName('');
     setSelectedFiles([]);
   };
