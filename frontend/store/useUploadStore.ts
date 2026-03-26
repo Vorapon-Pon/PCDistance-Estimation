@@ -79,6 +79,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
 
       let successImageCount = 0;
       let hasCameraOrImageUpdates = false;
+      let firstThumbnailUrl: string | null = null; // 💡 1. เพิ่มตัวแปรเก็บ URL ของรูปปก
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -144,6 +145,11 @@ export const useUploadStore = create<UploadState>((set, get) => ({
                 const thumbnailPath = filePath.replace(/(\.[\w\d_-]+)$/i, '_thumb$1');
                 await supabase.storage.from('project_files').upload(thumbnailPath, thumbnail);
                 
+                if (!firstThumbnailUrl) {
+                    const { data: urlData } = supabase.storage.from('project_files').getPublicUrl(thumbnailPath);
+                    firstThumbnailUrl = urlData.publicUrl;
+                }
+
                 await supabase.from('project_images').insert({
                 project_id: projectId,
                 batch_id: batchData.id,
@@ -188,7 +194,16 @@ export const useUploadStore = create<UploadState>((set, get) => ({
 
       toast.success(`Upload completed successfully!`);
       
-      await supabase.from('projects').update({ status: 'active' }).eq('id', projectId);
+
+      const { data: currentProject } = await supabase.from('projects').select('thumbnail_url').eq('id', projectId).single();
+      
+      const projectUpdatePayload: any = { status: 'active' };
+      
+      if (firstThumbnailUrl && !currentProject?.thumbnail_url) {
+        projectUpdatePayload.thumbnail_url = firstThumbnailUrl;
+      }
+
+      await supabase.from('projects').update(projectUpdatePayload).eq('id', projectId);
 
     } catch (error: any) {
       toast.error(error.message);

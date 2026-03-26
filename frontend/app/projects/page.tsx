@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/utils/client';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, } from '@/components/ui/dropdown-menu';
-import { Search, Plus, ChevronDown, MoreVertical, Globe, Image as ImageIcon, Layers, Clock, Calendar, ArrowDownAZ, Loader2 } from 'lucide-react';
+import { Search, Plus, ChevronDown, MoreVertical, Globe, Image as ImageIcon, Layers, Clock, Calendar, ArrowDownAZ, Loader2, Lock } from 'lucide-react';
 import NewProjectModal from '@/components/NewProjectModal';
 import Link from 'next/link';
 
@@ -19,8 +19,9 @@ type Project = {
   project_name: string;
   image_count: number;
   created_at: string;
-  updated_at?: string;
-  visibility?: string;
+  last_updated?: string; 
+  is_public?: boolean; 
+  thumbnail_url?: string;
 };
 
 export default function ProjectsPage() {
@@ -40,24 +41,14 @@ export default function ProjectsPage() {
       console.log("Current User:", user); 
 
       const { data, error } = await supabase.from('projects')
-        .select(`*, batches( image_count )`)
+        .select(`*`)
         .eq('user_id', user?.id)
         .order('created_at', { ascending: false });
 
-     if (!error && data) {
-        const formattedProjects = data.map((project: any) => {
-          const totalImages = project.batches?.reduce(
-            (sum: number, batch: any) => sum + (batch.image_count || 0), 
-            0
-          ) || 0;
+      console.log(data);
 
-          return {
-            ...project,
-            image_count: totalImages 
-          };
-        });
-
-        setProjects(formattedProjects);
+      if (!error && data) {
+        setProjects(data as Project[]);
       } else if (error) {
         console.error("Error fetching projects:", error.message);
       }
@@ -71,13 +62,13 @@ export default function ProjectsPage() {
     .sort((a, b) => {
       switch (sortBy.label) {
         case 'Recent Date':
-          return new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime();
+          return new Date(b.last_updated || b.created_at).getTime() - new Date(a.last_updated || a.created_at).getTime();
         case 'Date Created':
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         case 'Project Name':
           return a.project_name.localeCompare(b.project_name);
         case '# of Images':
-          return b.image_count - a.image_count;
+          return (b.image_count || 0) - (a.image_count || 0);
         default:
           return 0;
       }
@@ -144,15 +135,16 @@ export default function ProjectsPage() {
             <p>No projects found.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
           {filteredProjects.map((project) => (
             <ProjectCard
               key={project.id}
               id={project.id}
               title={project.project_name}
-              edited={timeAgo(project.updated_at || project.created_at)}
+              edited={timeAgo(project.last_updated || project.created_at)}
               imageCount={project.image_count || 0}
-              visibility={project.visibility || 'Public'}
+              isPublic={project.is_public ?? true} 
+              thumbnail={project.thumbnail_url || "https://images.unsplash.com/photo-1449824913935-59a10b8d2000?auto=format&fit=crop&q=80"}
             />
           ))}
         </div>
@@ -185,44 +177,66 @@ interface ProjectCardProps {
   title: string;
   edited: string;
   imageCount: number;
-  visibility: string;
+  isPublic: boolean;
+  thumbnail: string | null;
 }
 
-function ProjectCard({ id, title, edited, imageCount, visibility }: ProjectCardProps) {
-  const projectLink = `/projects/${id}/upload`
+function ProjectCard({ id, title, edited, imageCount, isPublic, thumbnail }: ProjectCardProps) {
+  const projectLink = `/projects/${id}/upload`;
   
   return (
-    <Link key={id} href={projectLink} className="flex flex-row gap-1 items-center bg-neutral-800 w-full p-1 py-2  rounded-xl border border-transparent hover:border-neutral-700 transition-all group">
-      
-      <div className="flex justify-between items-start px-2">
-        {/* Thumbnail Placeholder */}
-        <div className="w-12 h-12 bg-neutral-700 rounded-lg flex items-center justify-center text-neutral-800">
-          <ImageIcon size={20} />
-        </div>
+    <Link 
+      key={id} 
+      href={projectLink} 
+      className="flex flex-row gap-4 items-center bg-neutral-800 w-full p-2.5 rounded-xl border border-neutral-800/60 hover:border-neutral-700 hover:bg-neutral-900 transition-all duration-300 group cursor-pointer shadow-sm hover:shadow-md">
+      <div className="relative w-24 h-24 shrink-0 overflow-hidden rounded-lg bg-neutral-800/50 border border-neutral-800">
+        {thumbnail ? (
+          <img 
+            src={thumbnail} 
+            alt={title} 
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-neutral-600 transition-colors group-hover:text-neutral-400">
+            <ImageIcon size={28} strokeWidth={1.5} />
+          </div>
+        )}
+        <div className="absolute inset-0 ring-1 ring-inset ring-white/5 rounded-lg pointer-events-none" />
       </div>
 
-      <div className='flex flex-col w-full px-2' >
-        {/* Visibility Tag */}
-        <div className="flex items-center justify-between gap-1.5 text-xs text-neutral-500 mb-2">
-          <div className="flex items-center gap-1">
-            <Globe size={12} />
-            <span>{visibility}</span>
+      <div className='flex flex-col flex-1 min-w-0 py-1 pr-2'>
+
+        <div className="flex items-start justify-between mb-1.5">
+          {/* เปลี่ยน Icon และ Text ตาม isPublic */}
+          <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded border text-[10px] font-medium uppercase tracking-wider ${
+            isPublic 
+              ? 'bg-neutral-800/80 border-neutral-700/50 text-neutral-400' 
+              : 'bg-rose-950/30 border-rose-900/50 text-rose-400'
+          }`}>
+            {isPublic ? <Globe size={10} /> : <Lock size={10} />}
+            <span>{isPublic ? 'Public' : 'Private'}</span>
           </div>
             
           {/* Menu Dots */}
-          <button className="text-neutral-500 hover:text-white transition-colors">
-            <MoreVertical size={18} />
+          <button 
+            onClick={(e) => {
+              e.preventDefault(); 
+            }}
+            className="text-neutral-500 hover:text-white transition-colors p-1 -mt-1 -mr-1 rounded-md hover:bg-neutral-800"
+          >
+            <MoreVertical size={16} />
           </button>
         </div>
 
-      {/* Content */}
-      <h3 className="text-white font-medium text-lg mb-1 truncate" title={title}>
-        {title}
-      </h3>
-      
-      <p className="text-xs text-neutral-500 font-mono">
-        Edit {edited} • {imageCount} Images
-      </p>
+        <h3 className="text-white font-medium text-base mb-1.5 truncate group-hover:text-[#B8AB9C] transition-colors" title={title}>
+          {title}
+        </h3>
+        
+        <p className="text-[10px] text-neutral-500 font-mono mt-auto flex items-center gap-2">
+          <span>{imageCount} Images</span>
+          <span className="w-1 h-1 rounded-full bg-neutral-700"></span>
+          <span>Edit {edited}</span>
+        </p>
       </div>
     </Link>
   );
