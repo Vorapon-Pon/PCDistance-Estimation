@@ -10,6 +10,7 @@ interface CreditConfirmModalProps {
   title: string;
   description?: string;
   totalCost: number;
+  remainCredit: number;
   isLoading?: boolean;
   confirmText?: string;
   details: { label: string; value: string | number }[]; 
@@ -22,6 +23,7 @@ export default function CreditConfirmModal({
   title,
   description = "Once confirmed, credits will be deducted from your account. This action cannot be undone.",
   totalCost,
+  remainCredit,
   isLoading = false,
   confirmText = "Confirm & Pay",
   details
@@ -52,6 +54,10 @@ export default function CreditConfirmModal({
           <div className="flex justify-between items-center text-lg">
             <span className="text-zinc-300">Total Cost:</span>
             <span className="text-emerald-400 font-bold">{totalCost} credits</span>
+          </div>
+          <div className="flex justify-between items-center text-lg">
+            <span className="text-neutral-600 text-sm">Remaining credits:</span>
+            <span className="text-neutral-400 text-sm">{remainCredit} credits</span>
           </div>
         </div>
 

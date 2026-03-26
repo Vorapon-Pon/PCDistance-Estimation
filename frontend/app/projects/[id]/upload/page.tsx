@@ -34,18 +34,15 @@ export default function UploadPage() {
   const projectId = params.id as string;
   const supabase = createClient();
 
-  // ข้อมูลประวัติการอัปโหลด
   const [batchName, setBatchName] = useState('');
   const [batches, setBatches] = useState<Batch[]>([]);
   const [cameraPositions, setCameraPositions] = useState<CameraPos[]>([]);
   const [pointClouds, setPointClouds] = useState<PointCloud[]>([]);
 
-  // Staging Area (พักไฟล์ก่อนอัปโหลด)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 👇 ดึง State ทั้งหมดเกี่ยวกับการอัปโหลดมาจาก Zustand (แทนที่ useState เดิม)
   const { 
     isUploading, 
     uploadProgress, 

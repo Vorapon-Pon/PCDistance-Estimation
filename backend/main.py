@@ -72,7 +72,7 @@ class SliceRequest(BaseModel):
     center_y: float
     center_z: float
     radius: float = 50.0
-
+    
 def process_pointcloud(project_id: str, bucket_name: str, file_path: str):
     def update_status(status: str, message: str, progress: int):
         job_statuses[project_id] = {"status": status, "message": message, "progress": progress}
@@ -452,9 +452,37 @@ def process_detection(request: DetectionRequest):
 
                 update_status(image_id, "processing", "Running Object Detection...")
 
-                target_classes = [0, 1, 2, 3, 4, 5, 6]
+                classes_res = supabase.table("project_classes") \
+                    .select("name") \
+                    .eq("project_id", project_id) \
+                    .execute()
+                    
+                print(classes_res)
+                    
+                class_names = [c["name"].lower() for c in classes_res.data] if classes_res.data else []
+                yolo_class_map = {
+                    "car": 0,
+                    "electricpole": 1,
+                    "lightpole": 2,
+                    "motorcycle": 3,
+                    "sign": 4,
+                    "trafficsign": 5,
+                    "truck": 6,
+                }
+            
+                target_classes = []
+                for name in class_names:
+                    if name in yolo_class_map:
+                        target_classes.append(yolo_class_map[name])
 
-                results = yolo_model(img, conf=0.3, classes=target_classes)
+                if not target_classes:
+                    update_status(image_id, "completed", "No active target classes found for this project.", 0)
+                    print(f"Skipping {image_id}: No target classes mapped.")
+                    continue
+                
+                print(target_classes)
+                
+                results = yolo_model(img, conf=0.3, iou=0.45,classes=target_classes)
 
                 boxes = results[0].boxes
 
