@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/utils/client';
-import { BarChart3, Search, Maximize2, ZoomIn, ZoomOut, Download, Copy, ChevronLeft, ChevronRight, Info, ImageIcon, Compass, RotateCw, Loader2, Crosshair } from 'lucide-react';
+import { BarChart3, Maximize2, Copy, ChevronLeft, ChevronRight, ImageIcon, Compass, RotateCw, Crosshair } from 'lucide-react';
 import { toast } from 'sonner';
 import Script from 'next/script';
+import { useSlicingStore } from '@/store/useSlicingStore'; 
 
 export default function VisualizePage() {
   const params = useParams();
@@ -13,8 +14,10 @@ export default function VisualizePage() {
   const supabase = createClient();
   const router = useRouter();
 
-  const [isSlicing, setIsSlicing] = useState(false);
-  const [sliceMessage, setSliceMessage] = useState('');
+  const { startSlicing } = useSlicingStore();
+
+  const [showRadiusModal, setShowRadiusModal] = useState(false);
+  const [sliceRadius, setSliceRadius] = useState<number>(50);
 
   const panoramaRef = useRef<HTMLDivElement>(null);
   const [viewer, setViewer] = useState<any>(null);
@@ -47,7 +50,7 @@ export default function VisualizePage() {
           .single();
         if (projectError) throw projectError;
         setProjectData(project);
-
+        
         const { data: pointCloud } = await supabase
           .from('project_point_clouds')
           .select('potree_url, storage_path')
@@ -58,17 +61,16 @@ export default function VisualizePage() {
           setPotreeUrl(pointCloud.potree_url);
         } else {
           const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "http://127.0.0.1:54321";
-          setPotreeUrl(`${baseUrl}/storage/v1/object/public/${BUCKET_NAME}/converted/${projectId}/metadata.json`);
+          setPotreeUrl(`${baseUrl}/storage/v1/object/public/${BUCKET_NAME}/${projectId}/potree/metadata.json`);
         }
 
-        const { data: camPosData, error: camPosError } = await supabase
+        const { data: camPosData } = await supabase
           .from('camera_position')
           .select(`x, y, z, heading, pitch, roll, image_filename, image_id, project_images!inner(storage_path)`)
           .eq('project_id', projectId)
           .order('image_filename', { ascending: true }); 
 
         if (camPosData && camPosData.length > 0) {
-          // แปลงข้อมูลทั้งหมดให้อยู่ในรูปแบบ Array
           const formattedImages = camPosData.map(camPos => {
             const storagePath = Array.isArray(camPos.project_images) 
               ? camPos.project_images[0]?.storage_path 
@@ -112,7 +114,6 @@ export default function VisualizePage() {
 
   const initPannellum = () => {
     if ((window as any).pannellum && panoramaRef.current && activeData.imageUrl) {
-      // ล้าง viewer เก่าถ้ามี
       if (viewer) viewer.destroy();
 
       const newViewer = (window as any).pannellum.viewer(panoramaRef.current, {
@@ -133,6 +134,16 @@ export default function VisualizePage() {
 
   const iframeSrc = `/potree/viewer.html?cloudUrl=${encodeURIComponent(potreeUrl)}`;
 
+  useEffect(() => {
+    const iframe = document.getElementById('potree-iframe') as HTMLIFrameElement;
+    if (iframe && iframe.contentWindow && activeData?.coords) {
+      iframe.contentWindow.postMessage({
+        type: 'UPDATE_CAMERA',
+        coords: activeData.coords
+      }, '*');
+    }
+  }, [activeData]); 
+
   const handleNextImage = () => {
     if (imageList.length === 0) return;
     const nextIndex = (currentIndex + 1) % imageList.length; 
@@ -142,7 +153,7 @@ export default function VisualizePage() {
 
   const handlePrevImage = () => {
     if (imageList.length === 0) return;
-    const prevIndex = (currentIndex - 1 + imageList.length) % imageList.length; // ถอยกลับไปรูปสุดท้ายถ้าอยู่รูปแรก
+    const prevIndex = (currentIndex - 1 + imageList.length) % imageList.length; 
     setCurrentIndex(prevIndex);
     setActiveData(imageList[prevIndex]);
   };
@@ -152,112 +163,21 @@ export default function VisualizePage() {
     setActiveData(imageList[index]);
   };
 
-  const handleFullscreen = () => {
-    const iframe = document.getElementById('potree-iframe');
-    if (iframe) {
-      if (iframe.requestFullscreen) {
-        iframe.requestFullscreen();
-      }
-    }
-  };
-
   const handleCopyJson = () => {
     const jsonStr = JSON.stringify({ image: activeData.filename, coords: activeData.coords }, null, 2);
     navigator.clipboard.writeText(jsonStr);
     toast.success('Copied to clipboard!');
   };
 
-  const handleStartCalibration = async () => {
+  const handleStartCalibration = () => {
+    setShowRadiusModal(false);
     const currentImage = imageList[currentIndex];
     if (!currentImage || !projectData) {
-      alert("ไม่พบข้อมูลรูปภาพหรือโปรเจกต์");
+      toast.error("ไม่พบข้อมูลรูปภาพหรือโปรเจกต์");
       return;
     }
 
-    setIsSlicing(true);
-    setSliceMessage("Sending Data to Slicing...");
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        throw new Error("ไม่พบข้อมูลผู้ใช้งาน กรุณาล็อกอินใหม่");
-      }
-
-    const { data: pointCloud } = await supabase
-      .from('project_point_clouds')
-      .select('storage_path')
-      .eq('project_id', projectId)
-      .single();
-
-    const { data: camPos, error: camError } = await supabase
-      .from('camera_position')
-      .select('x, y, z')
-      .eq('image_id', currentImage.id)
-      .single();
-
-    if (camError || !camPos) {
-        throw new Error("ไม่พบพิกัด X,Y,Z ของรูปภาพนี้ โปรดตรวจสอบว่าอัปโหลดไฟล์ Camera Position (.csv, txt) ครบถ้วนและชื่อไฟล์ตรงกันหรือไม่");
-    }
-
-    try {
-      const startRes = await fetch('http://127.0.0.1:8000/api/slice-pointcloud', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_id: projectData.id,
-          bucket_name: BUCKET_NAME, 
-          file_path: pointCloud?.storage_path,
-          image_id: currentImage.id,
-          user_id: user.id,
-          center_x: camPos.x,
-          center_y: camPos.y, 
-          center_z: camPos.z,
-          radius: 50.0
-        })
-      });
-
-      if (!startRes.ok) {
-        const errorDetail = await startRes.text(); 
-        console.error("Error Details:", errorDetail);
-        throw new Error(`Error ${startRes.status}: ${errorDetail}`);
-      }
-
-      // 3. เริ่มระบบ Polling เช็คสถานะทุกๆ 3 วินาที
-      const pollInterval = setInterval(async () => {
-        try {
-          const statusRes = await fetch(`http://127.0.0.1:8000/api/slice-status/${projectData.id}`);
-          if (!statusRes.ok) return; // ถ้ายิงไม่เข้า ให้รอรอบถัดไป
-
-          const statusData = await statusRes.json();
-          setSliceMessage(statusData.message); // อัปเดตข้อความบนหน้าจอ (เช่น "Downloading...", "Slicing...")
-
-          if (statusData.status === 'completed') {
-            // 4. ถ้าสำเร็จ หยุด Polling และเด้งไปหน้า Calibration
-            clearInterval(pollInterval);
-            setSliceMessage("สำเร็จ! กำลังพาท่านไปยังหน้า Calibration...");
-            
-            setTimeout(() => {
-              setIsSlicing(false);
-              router.push(`/projects/${projectData.id}/calibration`);
-              //router.push(`/projects/${projectData.id}/calibration&imageId=${currentImage.id}`);
-              //router.push(`/calibration?projectId=${projectData.id}&imageId=${currentImage.id}`);
-            }, 1500); // ดีเลย์นิดนึงให้ผู้ใช้อ่านข้อความทัน
-            
-          } else if (statusData.status === 'error') {
-            // 5. ถ้าพัง ให้หยุด Polling และแจ้งเตือน
-            clearInterval(pollInterval);
-            alert(`เกิดข้อผิดพลาดจากเซิร์ฟเวอร์: ${statusData.message}`);
-            setIsSlicing(false);
-          }
-        } catch (pollErr) {
-          console.error("Polling Error:", pollErr);
-        }
-      }, 3000); // 3000 ms 
-
-    } catch (error) {
-      console.error("Start Slicing Error:", error);
-      alert("ไม่สามารถเชื่อมต่อกับ Python API ได้");
-      setIsSlicing(false);
-    }
+    startSlicing(projectData.id, currentImage.id, sliceRadius);
   };
 
   if (isLoading) {
@@ -273,7 +193,6 @@ export default function VisualizePage() {
 
   return (
     <div className="flex flex-col p-6 min-h-screen bg-neutral-900 text-neutral-200 overflow-hidden">
-      
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css" />
       <Script 
         src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js" 
@@ -286,7 +205,7 @@ export default function VisualizePage() {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <BarChart3 className="text-white" size={28} />
-            <h1 className="text-xl font-semibold">Visualize: {projectData?.project_name || 'Unknown Project'}</h1>
+            <h1 className="text-xl text-semibold">Visualize: {projectData?.project_name || 'Unknown Project'}</h1>
           </div>
         </div>
       </div>
@@ -367,25 +286,73 @@ export default function VisualizePage() {
           </div>
 
           <button 
-            onClick={handleStartCalibration}
+            onClick={() => setShowRadiusModal(true)}
             className="flex items-center gap-2 mx-4 mt-1.5 px-3 py-1.5 bg-[#B8AB9C]/50 text-[#B8AB9C] hover:bg-[#8e8479] hover:text-white rounded text-xs font-medium transition-colors border border-[#B8AB9C]/50"
             >
             <Crosshair size={14} />
             Calibrate This View
           </button>
 
+          {showRadiusModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+              <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-700 max-w-sm w-full shadow-2xl">
+                <h3 className="text-xl font-semibold text-white mb-2 flex items-center gap-2">
+                  <Crosshair size={20} className="text-[#B8AB9C]"/> 
+                  Adjust Slicing Radius
+                </h3>
+                <p className="text-sm text-neutral-400 mb-6">
+                  Specify the radius (in meters) to crop the point cloud around this camera view. to use in calibration for distance estimation.
+                </p>
+
+                <div className="mb-8">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-sm text-neutral-300">Radius (Meters)</label>
+                    <span className="text-[#B8AB9C] font-mono font-bold bg-[#B8AB9C]/10 px-2 py-1 rounded">
+                      {sliceRadius} m
+                    </span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="10" 
+                    max="50" 
+                    step="1"
+                    value={sliceRadius}
+                    onChange={(e) => setSliceRadius(Number(e.target.value))}
+                    className="w-full accent-[#B8AB9C] cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-neutral-500 mt-2 font-mono">
+                    <span>10m</span>
+                    <span>50m</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 justify-end">
+                  <button 
+                    onClick={() => setShowRadiusModal(false)}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-neutral-300 hover:bg-neutral-800 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleStartCalibration}
+                    className="px-4 py-2 rounded-lg text-sm font-bold bg-[#B8AB9C] text-black hover:bg-[#d0c2b2] transition-colors shadow-lg shadow-[#B8AB9C]/20"
+                  >
+                    Confirm & Slice
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex-1 flex flex-col p-4 gap-4 min-h-0">
-             {/* 360 Viewer */}
              <div className="w-full flex-1 bg-neutral-900 rounded shadow-xl overflow-hidden relative min-h-0">
               <div ref={panoramaRef} className="w-full h-full" />
-                
                 <div className="absolute inset-0 flex items-center justify-between px-4 pointer-events-none">
                   <button onClick={handlePrevImage} className="p-2 bg-black/40 rounded-full hover:bg-black/80 pointer-events-auto transition-all"><ChevronLeft size={24}/></button>
                   <button onClick={handleNextImage} className="p-2 bg-black/40 rounded-full hover:bg-black/80 pointer-events-auto transition-all"><ChevronRight size={24}/></button>
                 </div>
              </div>
 
-             {/* แถบ Thumbnail */}
              {imageList.length > 1 && (
                <div className="w-full h-20 flex-shrink-0">
                  <div className="flex gap-2 overflow-x-auto h-full pb-2 custom-scrollbar items-center">
@@ -408,13 +375,9 @@ export default function VisualizePage() {
         </div>
       </div>
 
-      {/* Bottom Panel: Details Overlay */}
+      {/* Bottom Panel */}
       <div className="p-6 bg-neutral-950 border-t border-neutral-800 grid grid-cols-1 md:grid-cols-2 gap-8 flex-shrink-0">
-        
-        {/* เลย์เอาต์ฝั่งซ้าย: แบ่งเป็น Coordinates และ Orientation */}
         <div className="flex flex-col gap-6">
-          
-          {/* Section 1: Coordinates */}
           <div>
             <h3 className="text-neutral-400 text-[13px] font-medium mb-3 flex items-center gap-2">
               <Compass size={14}/> Coordinates
@@ -432,8 +395,6 @@ export default function VisualizePage() {
               ))}
             </div>
           </div>
-
-          {/* Section 2: Orientation */}
           <div>
             <h3 className="text-neutral-400 text-[13px] font-medium mb-3 flex items-center gap-2">
               <RotateCw size={14}/> Orientation
@@ -453,10 +414,8 @@ export default function VisualizePage() {
               </div>
             </div>
           </div>
-
         </div>
         
-        {/* เลย์เอาต์ฝั่งขวา: Data Export */}
         <div className="flex flex-col justify-start">
            <div className="flex items-center justify-between text-xs text-neutral-400 mb-2">
              <span>Data Export</span>
@@ -476,24 +435,7 @@ export default function VisualizePage() {
              }, null, 2)}
            </div>
         </div>
-
       </div>
-
-      {isSlicing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#141414] p-8 rounded-xl border border-neutral-800 flex flex-col items-center max-w-md w-full text-center shadow-2xl">
-            <Loader2 className="w-12 h-12 text-neutral-700 animate-spin mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">Preparing 3D Calibration Data</h3>
-            <p className="text-sm text-neutral-400 mb-6">{sliceMessage}</p>
-            
-            {/* แสดง Progress Bar จำลอง (วิ่งวนไปเรื่อยๆ) */}
-            <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
-              <div className="h-full bg-[#B8AB9C] w-1/3 animate-[slide_2s_ease-in-out_infinite] rounded-full"></div>
-            </div>
-            <p className="text-xs text-neutral-500 mt-4">Please do not close this window.</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

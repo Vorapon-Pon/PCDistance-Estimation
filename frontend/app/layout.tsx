@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import UploadWidget from '@/components/projects/UploadWidget';
+import SlicingWidget from "@/components/projects/SlicingWidget";
+import DetectionWidget from "@/components/projects/DetectionWidget";
+import GlobalDetectionListener from "@/components/projects/GlobalDetectionListener";
 import Script from "next/script";
 import "./globals.css";
 
@@ -27,11 +31,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased custom-scrollbar`}
         suppressHydrationWarning={true}
       >
         {children}
         <Toaster richColors position="top-right" />
+        <UploadWidget />
+        <SlicingWidget />
+        <DetectionWidget />
+        <GlobalDetectionListener />
       </body>
     </html>
   );

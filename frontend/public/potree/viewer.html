@@ -36,65 +36,74 @@
 
     </div>
     <script>
-        // อ่าน URL parameter ที่ Next.js ส่งมาให้ (เช่น ?cloudUrl=http://...)
-        const urlParams = new URLSearchParams(window.location.search);
-        const cloudUrl = urlParams.get('cloudUrl');
+    const urlParams = new URLSearchParams(window.location.search);
+    const cloudUrl = urlParams.get('cloudUrl');
 
-        if (!cloudUrl) {
-            document.getElementById('potree_render_area').innerHTML = '<h2 style="color:white; text-align:center; margin-top:20%;">No Point Cloud URL Provided</h2>';
-        } else {
-            window.viewer = new Potree.Viewer(document.getElementById("potree_render_area"));
+    // สร้างตัวแปร Global ไว้เก็บรถ จะได้ขยับมันได้จากที่อื่น
+    let globalCarMesh = null;
+
+    if (!cloudUrl) {
+        document.getElementById('potree_render_area').innerHTML = '<h2 style="color:white; text-align:center; margin-top:20%;">No Point Cloud URL Provided</h2>';
+    } else {
+        window.viewer = new Potree.Viewer(document.getElementById("potree_render_area"));
+        
+        viewer.setEDLEnabled(true);
+        viewer.setFOV(60);
+        viewer.setPointBudget(2_000_000);
+        viewer.setBackground("black");
+
+        viewer.loadGUI(() => {
+            viewer.setLanguage('en');
+            $("#menu_tools").next().show();
+            viewer.toggleSidebar();
+        });
+
+        // โหลด Point Cloud ครั้งแรก
+        Potree.loadPointCloud(cloudUrl, "Point Cloud", e => {
+            let scene = viewer.scene;
+            let pointcloud = e.pointcloud;
             
-            viewer.setEDLEnabled(true); // เปิด Eye Dome Lighting ทำให้ดูมีมิติ
-            viewer.setFOV(60);
-            viewer.setPointBudget(2_000_000); // จำนวนจุดที่โหลตต่อครั้ง (ปรับเพิ่ม/ลด ตามความแรงคอม)
-            viewer.setBackground("black");
+            let material = pointcloud.material;
+            material.size = 1;
+            material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
+            scene.addPointCloud(pointcloud);
 
-            viewer.loadGUI(() => {
-                viewer.setLanguage('en'); // หรือ 'th' ถ้ามีไฟล์ภาษาไทย
-                $("#menu_tools").next().show(); // กางเมนู Tools ออกมา
-                viewer.toggleSidebar(); // แสดง Sidebar ด้านซ้าย
-            });
+            // ==========================================
+            // สร้าง Camera/Car แค่ครั้งเดียว
+            // ==========================================
+            const carGeom = new THREE.BoxGeometry(2, 1, 1); 
+            const carMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF });
+            globalCarMesh = new THREE.Mesh(carGeom, carMat);
+            viewer.scene.scene.add(globalCarMesh);
 
-            const urlParams = new URLSearchParams(window.location.search);
-            const camX = parseFloat(urlParams.get('X')) || 0;
-            const camY = parseFloat(urlParams.get('Y')) || 0;
-            const camZ = parseFloat(urlParams.get('Z')) || 0;
-            const heading = parseFloat(urlParams.get('heading')) || 0;
-            const pitch = parseFloat(urlParams.get('pitch')) || 0;
-            const roll = parseFloat(urlParams.get('roll')) || 0;
+            // ให้กล้องซูมไปเห็นภาพรวมของโปรเจกต์ตอนโหลดเสร็จครั้งแรก
+            viewer.fitToScreen();
+        });
+    }
 
-            Potree.loadPointCloud(cloudUrl, "Point Cloud", e => {
-                let scene = viewer.scene;
-                let pointcloud = e.pointcloud;
-                
-                let material = pointcloud.material;
-                material.size = 1;
-                material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
-                scene.addPointCloud(pointcloud);
+    window.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'UPDATE_CAMERA') {
+            const coords = event.data.coords;
+            const camX = coords.x || 0;
+            const camY = coords.y || 0;
+            const camZ = coords.z || 0;
+            const heading = coords.heading || 0;
+            const pitch = coords.pitch || 0;
+            const roll = coords.roll || 0;
 
-                // ==========================================
-                //  Camera
-                // ==========================================
-                const carGeom = new THREE.BoxGeometry(2, 1, 1); 
-                const carMat = new THREE.MeshStandardMaterial({ 
-                    color: 0xFFFFFF
-                });
-                const carMesh = new THREE.Mesh(carGeom, carMat);
-                
-                carMesh.position.set(camX, camY, camZ);
-                
-                carMesh.rotation.z = -THREE.MathUtils.degToRad(heading); 
-                carMesh.rotation.x = -THREE.MathUtils.degToRad(pitch); 
-                carMesh.rotation.y = -THREE.MathUtils.degToRad(roll); 
-                
-                viewer.scene.scene.add(carMesh);
+            if (globalCarMesh) {
+                globalCarMesh.position.set(camX, camY, camZ);
+                globalCarMesh.rotation.z = -THREE.MathUtils.degToRad(heading); 
+                globalCarMesh.rotation.x = -THREE.MathUtils.degToRad(pitch); 
+                globalCarMesh.rotation.y = -THREE.MathUtils.degToRad(roll); 
+            }
 
-                viewer.scene.view.position.set(camX, camY, camZ + 10); 
-
-                viewer.scene.view.lookAt(new THREE.Vector3(camX, camY, camZ));
-            });
+            if (window.viewer) {
+                window.viewer.scene.view.position.set(camX, camY, camZ); 
+                window.viewer.scene.view.lookAt(new THREE.Vector3(camX, camY, camZ));
+            }
         }
-    </script>
+    });
+</script>
 </body>
 </html>

@@ -11,3 +11,5 @@ supabase
 numpy
 open3d
 laspy
+opencv-python
+ultralytics

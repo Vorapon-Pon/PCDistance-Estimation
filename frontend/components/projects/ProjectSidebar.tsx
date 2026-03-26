@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation'; 
 import { createClient } from '@/utils/client';
-import { ArrowLeft, UploadCloud, Database, List, Eye, Target, LayoutDashboard, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, UploadCloud, Database, List, Eye, Target, LayoutDashboard, ChartColumn,ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from "@/lib/utils";
 
 export default function ProjectSidebar( ) {
@@ -40,7 +40,6 @@ export default function ProjectSidebar( ) {
   }, [projectId, supabase]);
 
   const getLinkClasses = (path: string) => {
-    // เช็คว่า path ปัจจุบันตรงกับเมนูไหม
     const isActive = pathname === path;
     const baseClass = `flex items-center gap-3 py-3 rounded-lg transition-all duration-300 ease-out ${
         collapsed ? 'justify-center px-2' : 'px-4'
@@ -52,13 +51,13 @@ export default function ProjectSidebar( ) {
     return `${baseClass} ${isActive ? activeClass : inactiveClass}`;
   };
 
-  // ปรับลำดับให้ Upload ขึ้นก่อนตามต้องการ
   const menuItems = [
     { name: 'Upload Data', href: `${baseUrl}/upload`, icon: UploadCloud },
     { name: 'Dataset', href: `${baseUrl}/dataset`, icon: Database },
     { name: 'Classlist', href: `${baseUrl}/classlist`, icon: List },
     { name: 'Visualize', href: `${baseUrl}/visualize`, icon: Eye },
     { name: 'Calibration', href: `${baseUrl}/calibration`, icon: Target },
+    { name: 'Estimation', href: `${baseUrl}/estimation`, icon: ChartColumn },
     { name: 'Overview', href: `${baseUrl}/overview`, icon: LayoutDashboard },
   ];
 
