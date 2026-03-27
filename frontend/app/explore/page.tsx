@@ -83,7 +83,6 @@ export default function ExplorePage() {
     fetchProjects();
   }, [supabase]);
 
-  // ปรับสี Icon ใน Card ให้เหมาะกับตีมมืด
   const getProjectColor = (index: number) => {
     const colors = [
       "#3b82f6", // blue-500
@@ -198,7 +197,7 @@ export default function ExplorePage() {
                 <div 
                   key={project.id}
                   className="group bg-neutral-800/40 rounded-2xl border border-neutral-800 overflow-hidden hover:border-neutral-600 hover:bg-neutral-800 transition-all duration-300 cursor-pointer"
-                  onClick={() => router.push(`/projects/${project.id}`)}
+                  onClick={() => router.push(`/explore/${project.id}/overview`)}
                 >
                   <div className="relative aspect-video overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-t from-neutral-900/90 via-transparent to-transparent z-10" />

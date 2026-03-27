@@ -45,8 +45,9 @@ export default function Sidebar() {
     useEffect(() => {
     const isInProject = pathname.startsWith('/projects/') && pathname !== '/projects';
     const isInSettings = pathname.startsWith('/settings/') && pathname !== '/settings';
+    const isInExplore = pathname.startsWith('/explore/') && pathname !== '/explore';
 
-        if (isInProject || isInSettings ) {
+        if (isInProject || isInSettings || isInExplore) {
             setCollapsed(true);
         } else {
             setCollapsed(false); 

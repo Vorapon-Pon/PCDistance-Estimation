@@ -79,7 +79,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
 
       let successImageCount = 0;
       let hasCameraOrImageUpdates = false;
-      let firstThumbnailUrl: string | null = null; // 💡 1. เพิ่มตัวแปรเก็บ URL ของรูปปก
+      let firstThumbnailUrl: string | null = null;
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];

@@ -65,6 +65,18 @@ export default function ProjectOverviewPage() {
         .select("*", { count: "exact", head: true })
         .eq("project_id", projectId);
 
+      const { data: projectClassesData } = await supabase
+        .from("project_classes")
+        .select("name, color")
+        .eq("project_id", projectId);
+
+      const classColorMap: Record<string, string> = {};
+      projectClassesData?.forEach(cls => {
+        if (cls.name && cls.color) {
+          classColorMap[cls.name] = cls.color;
+        }
+      });
+
       const { data: objectsData } = await supabase
         .from("detected_objects")
         .select("class_name")
@@ -76,15 +88,22 @@ export default function ProjectOverviewPage() {
         classCounts[name] = (classCounts[name] || 0) + 1;
       });
 
-      const classColors = ["bg-teal-400", "bg-yellow-400", "bg-purple-500", "bg-red-500", "bg-green-500", "bg-blue-400"];
+      // สีสำรองกรณีที่ Database ไม่ได้กำหนดสีไว้ 
+      const fallbackColors = ["#2dd4bf", "#facc15", "#a855f7", "#ef4444", "#22c55e", "#60a5fa"];
+      
       const distribution = Object.entries(classCounts)
         .sort((a, b) => b[1] - a[1]) // เรียงจากมากไปน้อย
-        .map(([name, count], index) => ({
-          name,
-          count: count.toLocaleString(),
-          percent: totalObjects ? ((count / totalObjects) * 100).toFixed(1) : "0",
-          color: classColors[index % classColors.length], // วนลูปสี
-        }));
+        .map(([name, count], index) => {
+          // ใช้สีจาก DB ถ้ามี ถ้าไม่มีให้ใช้สีสำรองตาม index
+          const color = classColorMap[name] || fallbackColors[index % fallbackColors.length];
+          
+          return {
+            name,
+            count: count.toLocaleString(),
+            percent: totalObjects ? ((count / totalObjects) * 100).toFixed(1) : "0",
+            color: color, 
+          };
+        });
 
       setClassDistribution(distribution);
       const detectionClassesCount = Object.keys(classCounts).length;
@@ -168,7 +187,7 @@ export default function ProjectOverviewPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-900 text-gray-200 p-6 font-sans">
+    <div className="min-h-screen bg-neutral-900 text-neutral-200 p-6 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
         
         {/* Header Section */}
@@ -183,7 +202,7 @@ export default function ProjectOverviewPage() {
             className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full border transition-all duration-200 ${
               project.is_public 
                 ? "bg-teal-900/30 text-emerald-400 border-emerald-800/50 hover:bg-emerald-900/50" 
-                : "bg-neutral-800 text-gray-300 border-neutral-600 hover:bg-neutral-700"
+                : "bg-neutral-800 text-neutral-300 border-neutral-600 hover:bg-neutral-700"
             }`}
           >
             {project.is_public ? <Globe size={14} /> : <Lock size={14} />}
@@ -207,20 +226,26 @@ export default function ProjectOverviewPage() {
           
           {/* Class Distribution */}
           <div className="bg-[#1e1e1e] border border-[#2e2e2e] rounded-xl p-5">
-            <h3 className="text-gray-400 text-sm font-medium mb-6">Class Distribution</h3>
+            <h3 className="text-neutral-400 text-sm font-medium mb-6">Class Distribution</h3>
             <div className="space-y-5">
               {classDistribution.length > 0 ? classDistribution.map((item) => (
                 <div key={item.name}>
                   <div className="flex justify-between text-sm mb-1.5">
                     <span className="font-medium text-white">{item.name}</span>
-                    <span className="text-gray-400">{item.count} ({item.percent}%)</span>
+                    <span className="text-neutral-400">{item.count} ({item.percent}%)</span>
                   </div>
                   <div className="w-full bg-[#2a2a2a] rounded-full h-1.5 overflow-hidden">
-                    <div className={`h-full ${item.color} rounded-full`} style={{ width: `${item.percent}%` }} />
+                    <div 
+                      className="h-full rounded-full" 
+                      style={{ 
+                        width: `${item.percent}%`, 
+                        backgroundColor: item.color 
+                      }} 
+                    />
                   </div>
                 </div>
               )) : (
-                <div className="text-gray-500 text-sm text-center py-4">No objects detected yet.</div>
+                <div className="text-neutral-500 text-sm text-center py-4">No objects detected yet.</div>
               )}
             </div>
           </div>
@@ -228,7 +253,7 @@ export default function ProjectOverviewPage() {
           <div className="space-y-6">
             {/* Data Types */}
             <div className="bg-[#1e1e1e] border border-[#2e2e2e] rounded-xl p-5">
-              <h3 className="text-gray-400 text-sm font-medium mb-4">Data Types</h3>
+              <h3 className="text-neutral-400 text-sm font-medium mb-4">Data Types</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <DataTypeCard ext=".jpg" count={dataTypes.jpg} label="Images" />
                 <DataTypeCard ext=".png" count={dataTypes.png} label="Images" />
@@ -240,8 +265,8 @@ export default function ProjectOverviewPage() {
             {/* Potree Conversion */}
             <div className="bg-[#1e1e1e] border border-[#2e2e2e] rounded-xl p-5">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-gray-400 text-sm font-medium">Potree Conversion</h3>
-                <span className="text-xs bg-[#2a2a2a] px-2 py-1 rounded text-gray-400">Project Main Cloud</span>
+                <h3 className="text-neutral-400 text-sm font-medium">Potree Conversion</h3>
+                <span className="text-xs bg-[#2a2a2a] px-2 py-1 rounded text-neutral-400">Project Main Cloud</span>
               </div>
               
               {potreeFile ? (
@@ -253,13 +278,13 @@ export default function ProjectOverviewPage() {
                       ) : potreeFile.processing_status?.toLowerCase() === "completed" ? (
                         <CheckCircle2 size={16} className="text-emerald-500" />
                       ) : (
-                        <div className="w-4 h-4 rounded-full border-2 border-gray-500" />
+                        <div className="w-4 h-4 rounded-full border-2 border-neutral-500" />
                       )}
                       <span className="text-white truncate max-w-[200px]">
                         {potreeFile.storage_path?.split('/').pop() || "point_cloud.las"}
                       </span>
                     </div>
-                    <span className="text-gray-400 capitalize">{potreeFile.processing_status || "Queued"}</span>
+                    <span className="text-neutral-400 capitalize">{potreeFile.processing_status || "Queued"}</span>
                   </div>
                   {potreeFile.processing_status?.toLowerCase() === "processing" && (
                      <div className="w-full bg-[#2a2a2a] rounded-full h-1 mt-1 overflow-hidden">
@@ -271,7 +296,7 @@ export default function ProjectOverviewPage() {
                   )}
                 </div>
               ) : (
-                <div className="text-gray-500 text-sm text-center py-2">No point cloud data.</div>
+                <div className="text-neutral-500 text-sm text-center py-2">No point cloud data.</div>
               )}
             </div>
           </div>
@@ -279,7 +304,7 @@ export default function ProjectOverviewPage() {
 
         {/* Project Info Footer */}
         <div className="bg-[#1e1e1e] border border-[#2e2e2e] rounded-xl p-5">
-          <h3 className="text-gray-400 text-sm font-medium mb-4">Project Info</h3>
+          <h3 className="text-neutral-400 text-sm font-medium mb-4">Project Info</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <InfoItem label="Created" value={formatDate(project.created_at)} />
             <InfoItem label="Last Modified" value={formatDate(project.last_updated)} />
@@ -316,7 +341,7 @@ export default function ProjectOverviewPage() {
               <button 
                 onClick={() => setShowConfirmModal(false)}
                 disabled={isUpdatingVisibility}
-                className="px-4 py-2 text-sm font-medium text-gray-300 hover:bg-[#2a2a2a] rounded-lg transition-colors disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium text-neutral-300 hover:bg-[#2a2a2a] rounded-lg transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -348,7 +373,7 @@ function StatCard({ icon, title, value }: { icon: React.ReactNode, title: string
       </div>
       <div>
         <div className="text-2xl font-bold text-white mb-1">{value}</div>
-        <div className="text-sm text-gray-400">{title}</div>
+        <div className="text-sm text-neutral-400">{title}</div>
       </div>
     </div>
   );
@@ -357,12 +382,12 @@ function StatCard({ icon, title, value }: { icon: React.ReactNode, title: string
 function DataTypeCard({ ext, count, label }: { ext: string, count: number, label: string }) {
   return (
     <div className="bg-[#262626] rounded-lg p-4 flex items-center gap-4 border border-[#333]">
-      <div className="px-2 py-1 bg-[#1a1a1a] rounded text-xs font-mono text-gray-400 border border-[#333]">
+      <div className="px-2 py-1 bg-[#1a1a1a] rounded text-xs font-mono text-neutral-400 border border-[#333]">
         {ext}
       </div>
       <div>
         <div className="text-white font-bold">{count.toLocaleString()}</div>
-        <div className="text-xs text-gray-400">{label}</div>
+        <div className="text-xs text-neutral-400">{label}</div>
       </div>
     </div>
   );
@@ -371,7 +396,7 @@ function DataTypeCard({ ext, count, label }: { ext: string, count: number, label
 function InfoItem({ label, value }: { label: string, value: string }) {
   return (
     <div>
-      <div className="text-sm text-gray-500 mb-1">{label}</div>
+      <div className="text-sm text-neutral-500 mb-1">{label}</div>
       <div className="text-sm text-white font-medium truncate">{value}</div>
     </div>
   );

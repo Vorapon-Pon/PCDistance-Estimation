@@ -4,7 +4,9 @@ import { useState, useRef, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { createClient } from '@/utils/client';
 import { useUploadStore } from '@/store/useUploadStore';
+import { processUploadCredits } from './actions';
 import { Upload, Image as ImageIcon, Box, FileText, Loader2, X, Trash2, Plus } from 'lucide-react';
+import CreditConfirmModal from '@/components/projects/CreditConfirmModal'; 
 import { toast } from 'sonner';
 
 type Batch = {
@@ -43,6 +45,10 @@ export default function UploadPage() {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [currentCredits, setCurrentCredits] = useState<number>(0);
+  const [isPaying, setIsPaying] = useState(false);
+
   const { 
     isUploading, 
     uploadProgress, 
@@ -77,6 +83,16 @@ export default function UploadPage() {
       .eq('project_id', projectId)
       .order('created_at', { ascending: false });
     if (pcData) setPointClouds(pcData);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('id', user.id)
+        .single();
+      if (profile) setCurrentCredits(profile.credits);
+    }
   }
 
   const filterAndSetFiles = (newFiles: File[]) => {
@@ -157,6 +173,90 @@ export default function UploadPage() {
     
     setBatchName('');
     setSelectedFiles([]);
+  };
+
+  const calculateCosts = () => {
+    let imageCount = 0;
+    let pointCloudCount = 0;
+    let cameraCount = 0;
+    
+    selectedFiles.forEach(file => {
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      if (['jpg', 'jpeg', 'png'].includes(ext || '')) imageCount++;
+      if (['las', 'bin', 'pcd', 'npy'].includes(ext || '')) pointCloudCount++;
+      else if (['txt', 'csv'].includes(ext || '')) cameraCount++;
+    });
+
+    const imageCost = imageCount * 1; 
+    const pointCloudCost = pointCloudCount * 10; 
+    const cameraCost = cameraCount * 1;
+
+    const totalCost = imageCost + pointCloudCost + cameraCost;
+    
+
+    return { imageCount, pointCloudCount, cameraCount, totalCost };
+  };
+
+  const { imageCount, pointCloudCount, cameraCount, totalCost } = calculateCosts();
+
+  const handleStartUploadClick = () => {
+    if (selectedFiles.length === 0) return;
+    if (!batchName.trim()) { 
+      toast.error('Please enter a Batch Name!'); 
+      return; 
+    }
+    
+    if (totalCost > currentCredits) {
+      toast.error('Not enough credits. Please top up.');
+      return;
+    }
+
+    setIsConfirmModalOpen(true);
+  };
+
+  const handleConfirmUpload = async () => {
+    setIsPaying(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not found");
+
+      let transactionType = '';
+        if ((imageCount > 0 && pointCloudCount > 0) || (imageCount > 0 && cameraCount > 0) || (pointCloudCount > 0 && cameraCount > 0)) {
+          transactionType = 'UPLOAD_MIXED';
+        } else if (imageCount > 0) {
+          transactionType = 'UPLOAD_IMAGE';
+        } else if(pointCloudCount > 0) {
+          transactionType = 'UPLOAD_POINTCLOUD';
+        }else {
+          transactionType = 'UPLOAD_CAMERA_POSITION';
+        }
+
+        const description = `Uploaded ${imageCount} images, ${pointCloudCount} point clouds and to batch: ${batchName}`;
+
+      if (totalCost > 0) {
+        const { error: creditError } = await supabase.rpc('deduct_user_credits', {
+          p_user_id: user.id,
+          p_amount: totalCost,
+          p_transaction_type: transactionType,
+          p_description: description
+        });
+
+        if (creditError) throw new Error(creditError.message);
+      }
+
+      setIsConfirmModalOpen(false);
+      startGlobalUpload(projectId, batchName, selectedFiles);
+      
+      setBatchName('');
+      setSelectedFiles([]);
+
+      setCurrentCredits(prev => prev - totalCost); 
+
+    } catch (error: any) {
+      toast.error(error.message.includes('Not enough credits') ? 'Not enough credits.' : 'Payment failed.');
+    } finally {
+      setIsPaying(false);
+    }
   };
 
   return (
@@ -262,11 +362,12 @@ export default function UploadPage() {
               </div>
 
               <button 
-                onClick={startUpload}
+                onClick={handleStartUploadClick}
                 disabled={isUploading}
                 className="w-full bg-[#B8AB9C] text-black font-semibold py-3 rounded-lg hover:bg-[#d0c2b2] transition-colors text-lg flex items-center justify-center gap-2 shadow-lg shadow-[#B8AB9C]/10"
               >
-                <Upload size={20} /> Start Upload
+                <Upload size={20} /> 
+                Start Upload {totalCost > 0 && `(${totalCost} Credits)`}
               </button>
             </div>
           ) : (
@@ -389,6 +490,22 @@ export default function UploadPage() {
           </div>
         </div>
       </div>
+
+      <CreditConfirmModal 
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        onConfirm={handleConfirmUpload}
+        title="Confirm Upload"
+        isLoading={isPaying}
+        totalCost={totalCost}
+        remainCredit={currentCredits - totalCost}
+        details={[
+          { label: 'Batch Name', value: batchName },
+          { label: 'Images to upload', value: `${imageCount} file(s)` },
+          { label: 'Point Clouds to upload', value: `${pointCloudCount} file(s)` },
+          { label: 'Camera Details (.txt)', value: `${cameraCount} file(s)` },
+        ]}
+      />
     </div>
   );
 }

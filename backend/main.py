@@ -40,11 +40,13 @@ supabase: Client = create_client(
     options=ClientOptions(postgrest_client_timeout=1800) # Timeout 30 min
 )
 
-MODEL_PATH = './model/best.pt'
-if os.path.exists(MODEL_PATH):
-    yolo_model = YOLO(MODEL_PATH)
+BASE_MODEL_PATH = './model/yolo11m-seg.pt'
+CUSTOM_MODEL_PATH = './model/best_seg.pt'
+if os.path.exists(BASE_MODEL_PATH and CUSTOM_MODEL_PATH):
+    model_base = YOLO(BASE_MODEL_PATH)  
+    model_custom = YOLO(CUSTOM_MODEL_PATH)
 else:
-    print(f"Warning: YOLO model not found at {MODEL_PATH}")
+    print(f"Warning: YOLO model not found at {BASE_MODEL_PATH}")
     
 detection_job_statuses = {}
 
@@ -460,31 +462,56 @@ def process_detection(request: DetectionRequest):
                 print(classes_res)
                     
                 class_names = [c["name"].lower() for c in classes_res.data] if classes_res.data else []
-                yolo_class_map = {
-                    "car": 0,
-                    "electricpole": 1,
-                    "lightpole": 2,
+                base_class_map = {
+                    "car": 2,
                     "motorcycle": 3,
-                    "sign": 4,
-                    "trafficsign": 5,
-                    "truck": 6,
+                    "truck": 7,
+                    "trafficsign": 11, # อนุโลมใช้ stop sign ของ COCO แทนไปก่อนได้ครับ
+                }
+                
+                custom_class_map = {
+                    "electricpole": 0,
+                    "lightpole": 1
                 }
             
-                target_classes = []
-                for name in class_names:
-                    if name in yolo_class_map:
-                        target_classes.append(yolo_class_map[name])
+                target_base_classes = []
+                target_custom_classes = []
 
-                if not target_classes:
+                for name in class_names:
+                    if name in base_class_map:
+                        target_base_classes.append(base_class_map[name])
+                    if name in custom_class_map:
+                        target_custom_classes.append(custom_class_map[name])
+
+                if not target_base_classes and not target_custom_classes:
                     update_status(image_id, "completed", "No active target classes found for this project.", 0)
                     print(f"Skipping {image_id}: No target classes mapped.")
                     continue
                 
-                print(target_classes)
+                all_detected_boxes = []
                 
-                results = yolo_model(img, conf=0.3, iou=0.45,classes=target_classes)
-
-                boxes = results[0].boxes
+                if target_base_classes:
+                    results_base = model_base(img, conf=0.3, iou=0.45, classes=target_base_classes)
+                    for box in results_base[0].boxes:
+                        all_detected_boxes.append({
+                            "coords": box.xyxy[0].cpu().numpy(),
+                            "conf": float(box.conf[0]),
+                            "class_name": model_base.names[int(box.cls[0])] # ดึงชื่อคลาสออกมาเลย
+                        })
+                        
+                if target_custom_classes:
+                    results_custom = model_custom(img, conf=0.3, iou=0.45, classes=target_custom_classes)
+                    for box in results_custom[0].boxes:
+                        # กรณีที่ตั้งชื่อตอนเทรนไม่ตรงกับใน DB เราสามารถดักจับและเปลี่ยนชื่อตรงนี้ได้
+                        raw_name = model_custom.names[int(box.cls[0])]
+                        # เผื่อชื่อตอนเทรนพิมพ์ใหญ่/เล็กไม่ตรงกัน
+                        clean_name = raw_name.replace(" ", "").lower() 
+                        
+                        all_detected_boxes.append({
+                            "coords": box.xyxy[0].cpu().numpy(),
+                            "conf": float(box.conf[0]),
+                            "class_name": clean_name
+                        })
 
                 # ==========================================
                 # 5. Filter Point Cloud near camera
@@ -533,14 +560,10 @@ def process_detection(request: DetectionRequest):
 
                 detected_list = []
 
-                for box in boxes:
-
-                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-
-                    cls_id = int(box.cls[0])
-                    conf = float(box.conf[0])
-
-                    class_name = yolo_model.names[cls_id]
+                for item in all_detected_boxes:
+                    x1, y1, x2, y2 = item["coords"]
+                    class_name = item["class_name"]
+                    conf = item["conf"]
 
                     inside_mask = (
                         (u_valid >= x1) &
@@ -550,7 +573,6 @@ def process_detection(request: DetectionRequest):
                     )
 
                     distance = None
-
                     if np.sum(inside_mask) > 0:
                         points_inside = d_valid[inside_mask]
                         distance = float(np.percentile(points_inside, 5))
