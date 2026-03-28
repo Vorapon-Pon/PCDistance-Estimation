@@ -117,7 +117,6 @@ export default function ExploreProjectOverviewPage() {
     fetchProjectData();
   }, [projectId, supabase]);
 
-  // --- ฟังก์ชันกด Like ---
   const handleLike = async () => {
     if (isLikeLoading) return;
 

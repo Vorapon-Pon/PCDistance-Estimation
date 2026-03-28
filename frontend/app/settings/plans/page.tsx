@@ -1,8 +1,43 @@
-import { Globe, Download, Coins, Zap, Crown, Check } from 'lucide-react';
+'use client';
 
-export default function SettingsPage() {
+import React, { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Globe, Download, Coins, Zap, Crown, Check, X, CheckCircle2, Loader2 } from 'lucide-react';
+import { createCheckoutSession } from './actions';
+
+function SettingsContent() {
+  const searchParams = useSearchParams();
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState<string | null>(null);
+
+  useEffect(() => {
+    const success = searchParams.get('success');
+    if (success) {
+      setIsSuccessModalOpen(true);
+      // ล้าง URL parameter ออกไปเพื่อไม่ให้ Modal เด้งซ้ำตอน Refresh
+      window.history.replaceState(null, '', '/settings'); 
+    }
+  }, [searchParams]);
+
+  const handleBuyPlan = async (priceId: string, type: 'subscription' | 'topup') => {
+    setIsLoading(priceId);
+    try {
+      const result = await createCheckoutSession(priceId, type);
+      if (result.url) {
+        window.location.href = result.url; // เด้งไปหน้า Stripe
+      } else {
+        console.error(result.error);
+        alert(result.error || 'Something went wrong');
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsLoading(null);
+    }
+  };
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 relative">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white">Plan & Billing</h1>
@@ -94,6 +129,7 @@ export default function SettingsPage() {
               <input type="number" defaultValue={100} className="bg-transparent text-white w-16 outline-none" />
             </div>
             <span className="text-sm text-gray-400">credits</span>
+            {/* Note: ถ้าจะทำระบบเติม Credit ต้องสร้าง Price ID แบบ One-time payment ใน Stripe อีกตัวนะครับ */}
             <button className="bg-yellow-500 hover:bg-yellow-600 text-black px-6 py-2 rounded-lg text-sm font-bold transition-colors">
               Buy
             </button>
@@ -136,13 +172,17 @@ export default function SettingsPage() {
               <span className="text-sm text-gray-400">/month</span>
             </div>
             <ul className="space-y-3 mb-8 text-sm text-gray-300 flex-1">
-              <li className="flex items-center gap-2"><Check className="w-4 h-4 text-teal-500" /> 100 credits per month</li>
+              <li className="flex items-center gap-2"><Check className="w-4 h-4 text-teal-500" /> 200 credits per month</li>
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-teal-500" /> $3 per additional credit</li>
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-teal-500" /> Private data</li>
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-teal-500" /> Email Support</li>
             </ul>
-            <button className="w-full bg-[#38b2ac] hover:bg-[#319795] text-white py-2 rounded-lg text-sm font-medium transition-colors">
-              Select Plan
+            <button 
+              onClick={() => handleBuyPlan('price_1TG0S4Gt2ldzakk0h7V9m03S', 'subscription')}
+              disabled={isLoading !== null}
+              className="w-full bg-[#38b2ac] hover:bg-[#319795] text-white py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isLoading === 'price_1TG0S4Gt2ldzakk0h7V9m03S' ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Select Plan'}
             </button>
           </div>
 
@@ -162,13 +202,56 @@ export default function SettingsPage() {
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-yellow-500" /> Private data + Collaboration</li>
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-yellow-500" /> Priority Support</li>
             </ul>
-            <button className="w-full bg-[#38b2ac] hover:bg-[#319795] text-white py-2 rounded-lg text-sm font-medium transition-colors">
-              Select Plan
+            <button 
+              onClick={() => handleBuyPlan('price_1TG0SPGt2ldzakk0u8fdoEeo', 'subscription')}
+              disabled={isLoading !== null}
+              className="w-full bg-[#38b2ac] hover:bg-[#319795] text-white py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isLoading === 'price_1TG0SPGt2ldzakk0u8fdoEeo' ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Select Plan'}
             </button>
           </div>
 
         </div>
       </section>
+
+      {/* 🟢 Success Modal */}
+      {isSuccessModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-neutral-900 border border-neutral-700 p-8 rounded-2xl max-w-sm w-full text-center relative shadow-2xl animate-in zoom-in-95 duration-200">
+            <button 
+              onClick={() => setIsSuccessModalOpen(false)}
+              className="absolute top-4 right-4 text-neutral-500 hover:text-white transition-colors"
+            >
+              <X size={20} />
+            </button>
+            
+            <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CheckCircle2 size={32} className="text-emerald-500" />
+            </div>
+            
+            <h3 className="text-2xl font-bold text-white mb-2">Payment Successful!</h3>
+            <p className="text-zinc-400 mb-8">
+              Thank you for your purchase. Your account and credits have been updated.
+            </p>
+            
+            <button 
+              onClick={() => setIsSuccessModalOpen(false)}
+              className="w-full bg-[#B8AB9C] hover:bg-[#B8AB9C]/80 text-white font-semibold py-3 rounded-xl transition-colors"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+// หุ้มด้วย Suspense เพื่อแก้ Error ของ Next.js ตอนใช้ useSearchParams
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className="text-white flex items-center gap-2"><Loader2 className="animate-spin" /> Loading Settings...</div>}>
+      <SettingsContent />
+    </Suspense>
   );
 }
