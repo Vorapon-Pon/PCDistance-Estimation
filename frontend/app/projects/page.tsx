@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/utils/client';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, } from '@/components/ui/dropdown-menu';
 import { Search, Plus, ChevronDown, MoreVertical, Globe, Image as ImageIcon, Layers, Clock, Calendar, ArrowDownAZ, Loader2, Lock } from 'lucide-react';
-import NewProjectModal from '@/components/NewProjectModal';
+import NewProjectModal from '@/components/projects/NewProjectModal';
 import Link from 'next/link';
 
 const SORT_OPTIONS = [
@@ -28,7 +28,6 @@ export default function ProjectsPage() {
   const supabase = createClient();
 
   const [sortBy, setSortBy] = useState(SORT_OPTIONS[0]);
-
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearchQuery] = useState('');

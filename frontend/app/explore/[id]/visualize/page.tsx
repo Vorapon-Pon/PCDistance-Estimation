@@ -3,7 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/utils/client';
-import { BarChart3, Maximize2, Copy, ChevronLeft, ChevronRight, ImageIcon, Compass, RotateCw, Crosshair } from 'lucide-react';
+import { 
+  BarChart3, Maximize2, Copy, ChevronLeft, ChevronRight, 
+  ImageIcon, Compass, RotateCw, Download, Lock, Loader2, ChevronDown 
+} from 'lucide-react';
 import { toast } from 'sonner';
 import Script from 'next/script';
 import { useSlicingStore } from '@/store/useSlicingStore'; 
@@ -28,6 +31,11 @@ export default function VisualizePage() {
   const [projectData, setProjectData] = useState<any>(null);
   const [potreeUrl, setPotreeUrl] = useState<string>('');
   
+  const [userTier, setUserTier] = useState<string>('free');
+  const [rawLasPath, setRawLasPath] = useState<string>('');
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  
   const [viewMode, setViewMode] = useState<'split' | '3d' | '360'>('split');
 
   const [activeData, setActiveData] = useState({
@@ -43,6 +51,20 @@ export default function VisualizePage() {
     async function fetchVisualizeData() {
       setIsLoading(true);
       try {
+        // 1. Fetch User Profile for Plan Tier
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('plan_tier')
+            .eq('id', user.id)
+            .single();
+          if (profile) {
+            setUserTier(profile.plan_tier);
+          }
+        }
+
+        // 2. Fetch Project Data
         const { data: project, error: projectError } = await supabase
           .from('projects')
           .select('*')
@@ -57,11 +79,17 @@ export default function VisualizePage() {
           .eq('project_id', projectId)
           .single();
           
-        if (pointCloud?.potree_url) {
-          setPotreeUrl(pointCloud.potree_url);
-        } else {
-          const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "http://127.0.0.1:54321";
-          setPotreeUrl(`${baseUrl}/storage/v1/object/public/${BUCKET_NAME}/${projectId}/potree/metadata.json`);
+        if (pointCloud) {
+          if (pointCloud.storage_path) {
+            setRawLasPath(pointCloud.storage_path);
+          }
+
+          if (pointCloud.potree_url) {
+            setPotreeUrl(pointCloud.potree_url);
+          } else {
+            const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "http://127.0.0.1:54321";
+            setPotreeUrl(`${baseUrl}/storage/v1/object/public/${BUCKET_NAME}/${projectId}/potree/metadata.json`);
+          }
         }
 
         const { data: camPosData } = await supabase
@@ -144,40 +172,113 @@ export default function VisualizePage() {
     }
   }, [activeData]); 
 
-  const handleNextImage = () => {
+  const handleExport = async (type: 'las' | 'potree') => {
+    setShowExportMenu(false);
+
+    if (userTier === 'free') {
+      toast.error('การ Export สงวนไว้สำหรับผู้ใช้ระดับ Viewer ขึ้นไป กรุณาอัปเกรดแผนของคุณ');
+      return;
+    }
+
+    try {
+      if (type === 'las') {
+        if (!rawLasPath) {
+          toast.error('ไม่พบไฟล์ .las ต้นฉบับในระบบ');
+          return;
+        }
+
+        toast.info('กำลังเริ่มดาวน์โหลดไฟล์ .las...');
+        setIsExporting(true);
+        
+        const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(rawLasPath, {
+          download: true, 
+        });
+
+        if (data && data.publicUrl) {
+          const a = document.createElement('a');
+          a.href = data.publicUrl;
+          a.download = rawLasPath.split('/').pop() || `${projectData?.project_name}_pointcloud.las`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } else {
+          toast.error('ไม่สามารถสร้างลิงก์ดาวน์โหลดได้');
+        }
+        setIsExporting(false);
+
+      } else if (type === 'potree') {
+        toast.info('กำลังเตรียมบีบอัดข้อมูล Potree ที่ Backend...');
+        setIsExporting(true);
+        
+        const fastApiUrl = process.env.NEXT_PUBLIC_FASTAPI_URL || 'http://localhost:8000';
+        
+        const res = await fetch(`${fastApiUrl}/api/export-potree`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project_id: projectId, bucket_name: BUCKET_NAME })
+        });
+        
+        if (!res.ok) throw new Error('ไม่สามารถเชื่อมต่อกับ Backend ได้');
+
+        const intervalId = setInterval(async () => {
+          try {
+            const statusRes = await fetch(`${fastApiUrl}/api/export-potree-status/${projectId}`);
+            const statusData = await statusRes.json();
+
+            if (statusData.status === 'completed') {
+              clearInterval(intervalId);
+              setIsExporting(false);
+              toast.success('บีบอัดข้อมูลสำเร็จ! กำลังเริ่มดาวน์โหลด...', { id: 'potree-export-toast' });
+              
+              const a = document.createElement('a');
+              a.href = statusData.download_url;
+              a.download = `potree_${projectId}.zip`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              
+            } else if (statusData.status === 'error') {
+              clearInterval(intervalId);
+              setIsExporting(false);
+              toast.error(`เกิดข้อผิดพลาดในการ Zip ไฟล์: ${statusData.message}`, { id: 'potree-export-toast' });
+            } else {
+              toast.loading(`Backend: ${statusData.message}`, { id: 'potree-export-toast' });
+            }
+          } catch (pollErr) {
+             clearInterval(intervalId);
+             setIsExporting(false);
+             toast.error('ขาดการเชื่อมต่อระหว่างตรวจสอบสถานะการ Export');
+          }
+        }, 3000); // เช็คทุกๆ 3 วินาที
+      }
+
+    } catch (error: any) {
+      console.error("Export Error:", error);
+      toast.error(`เกิดข้อผิดพลาดในการ Export: ${error.message}`);
+      setIsExporting(false);
+    }
+  };
+
+  const handleNextImage = () => { 
     if (imageList.length === 0) return;
     const nextIndex = (currentIndex + 1) % imageList.length; 
     setCurrentIndex(nextIndex);
     setActiveData(imageList[nextIndex]);
   };
-
-  const handlePrevImage = () => {
+  const handlePrevImage = () => { 
     if (imageList.length === 0) return;
     const prevIndex = (currentIndex - 1 + imageList.length) % imageList.length; 
     setCurrentIndex(prevIndex);
     setActiveData(imageList[prevIndex]);
   };
-
-  const handleSelectImage = (index: number) => {
+  const handleSelectImage = (index: number) => { 
     setCurrentIndex(index);
     setActiveData(imageList[index]);
   };
-
-  const handleCopyJson = () => {
+  const handleCopyJson = () => { 
     const jsonStr = JSON.stringify({ image: activeData.filename, coords: activeData.coords }, null, 2);
     navigator.clipboard.writeText(jsonStr);
     toast.success('Copied to clipboard!');
-  };
-
-  const handleStartCalibration = () => {
-    setShowRadiusModal(false);
-    const currentImage = imageList[currentIndex];
-    if (!currentImage || !projectData) {
-      toast.error("ไม่พบข้อมูลรูปภาพหรือโปรเจกต์");
-      return;
-    }
-
-    startSlicing(projectData.id, currentImage.id, sliceRadius);
   };
 
   if (isLoading) {
@@ -201,16 +302,62 @@ export default function VisualizePage() {
       />
 
       {/* Header */}
-      <div className="pb-4 border-b border-neutral-800 bg-neutral-900 flex-shrink-0">
+      <div className="pb-4 border-b border-neutral-800 bg-neutral-900 flex-shrink-0 relative z-20">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <BarChart3 className="text-white" size={28} />
-            <h1 className="text-xl text-semibold">Visualize: {projectData?.project_name || 'Unknown Project'}</h1>
+            <h1 className="text-xl font-semibold">Visualize: {projectData?.project_name || 'Unknown Project'}</h1>
+          </div>
+
+          {/* Export Menu */}
+          <div className="relative">
+            <div className="flex items-center gap-3">
+              {userTier === 'free' && (
+            <span className="text-xs text-orange-400 font-medium">
+              *Upgrade plan to export
+            </span>
+            )}
+            <button 
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                disabled={userTier === 'free' || isExporting}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  userTier === 'free'
+                    ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
+                    : 'bg-[#B8AB9C] hover:bg-[#B8AB9C]/80 text-white'
+                }`}
+              >
+                {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {isExporting ? 'Exporting...' : 'Export Data'}
+                <ChevronDown size={16} />
+              
+            </button>
+
+            {/* Dropdown Options */}
+            {showExportMenu && (
+              <div className="absolute right-0 mt-2 w-48 bg-neutral-800 border border-neutral-700 rounded-md shadow-lg overflow-hidden z-50">
+                <button 
+                  onClick={() => handleExport('las')}
+                  className="w-full text-left px-4 py-3 text-sm hover:bg-neutral-700 flex items-center justify-between transition-colors"
+                >
+                  <span>Raw .LAS File</span>
+                  {userTier === 'free' && <Lock size={14} className="text-neutral-500" />}
+                </button>
+                <div className="h-px bg-neutral-700"></div>
+                <button 
+                  onClick={() => handleExport('potree')}
+                  className="w-full text-left px-4 py-3 text-sm hover:bg-neutral-700 flex items-center justify-between transition-colors"
+                >
+                  <span>Potree Format</span>
+                  {userTier === 'free' && <Lock size={14} className="text-neutral-500" />}
+                </button>
+              </div>
+            )}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="flex bg-[#141414] p-1 rounded-lg border border-neutral-800">
+      <div className="flex bg-[#141414] p-1 rounded-lg border border-neutral-800 my-4 max-w-fit">
         <button 
           onClick={() => setViewMode('3d')} 
           className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${viewMode === '3d' ? 'bg-neutral-700 text-white shadow' : 'text-neutral-500 hover:text-neutral-300'}`}
@@ -231,8 +378,8 @@ export default function VisualizePage() {
         </button>
       </div>
 
-      {/* Main Content: Split View */}
-      <div className="flex flex-col md:flex-row h-[70vh] border-b border-neutral-800 min-h-0">
+      {/* Main Content: Split View (โค้ดเดิม) */}
+      <div className="flex flex-col md:flex-row h-[65vh] border border-neutral-800 min-h-0 rounded-lg overflow-hidden z-10">
         
         {/* LEFT: Point Cloud View */}
         <div 
@@ -317,7 +464,7 @@ export default function VisualizePage() {
       </div>
 
       {/* Bottom Panel */}
-      <div className="p-6 bg-neutral-950 border-t border-neutral-800 grid grid-cols-1 md:grid-cols-2 gap-8 flex-shrink-0">
+      <div className="p-6 bg-neutral-950 border border-neutral-800 rounded-lg mt-4 grid grid-cols-1 md:grid-cols-2 gap-8 flex-shrink-0">
         <div className="flex flex-col gap-6">
           <div>
             <h3 className="text-neutral-400 text-[13px] font-medium mb-3 flex items-center gap-2">
@@ -359,10 +506,10 @@ export default function VisualizePage() {
         
         <div className="flex flex-col justify-start">
            <div className="flex items-center justify-between text-xs text-neutral-400 mb-2">
-             <span>Data Export</span>
+             <span>Data Payload (JSON)</span>
              <button onClick={handleCopyJson} className="flex items-center gap-1 hover:text-white transition-colors"><Copy size={14}/> Copy JSON</button>
            </div>
-           <div className="bg-black p-3 rounded border border-neutral-800 h-24 font-mono text-[10px] text-neutral-500 overflow-y-auto custom-scrollbar">
+           <div className="bg-black p-3 rounded border border-neutral-800 h-32 font-mono text-[10px] text-neutral-500 overflow-y-auto custom-scrollbar">
              {JSON.stringify({ 
                image: activeData.filename, 
                coords: { 

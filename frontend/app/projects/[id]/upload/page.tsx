@@ -100,7 +100,6 @@ export default function UploadPage() {
     
     setSelectedFiles(prev => {
       const combined = [...prev, ...validFiles];
-      // กรองไฟล์ที่ชื่อและขนาดตรงกันออกไป ป้องกันการอัปโหลดเบิ้ล
       return combined.filter((file, index, self) => 
         index === self.findIndex((t) => t.name === file.name && t.size === file.size)
       );

@@ -3,10 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { createClient } from '@/utils/client';
-import { Search, ChevronDown, Edit2, Database, Loader2, Image as ImageIcon, Images, ArrowUpAZ, ArrowDownAZ, Clock, ArrowDown01, ArrowUp01 } from 'lucide-react';
+import { Search, ChevronDown, Database, Loader2, Image as ImageIcon, Images, ArrowUpAZ, ArrowDownAZ, ArrowDown01, ArrowUp01, Download } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import Image from 'next/image';
-import { resolve } from 'path';
 
 type ProjectImage = {
   id: string;
@@ -35,9 +34,29 @@ export default function DatasetPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState(SORT_OPTIONS[0]);
 
+  // State สำหรับ Export และ เช็ค Tier
+  const [userTier, setUserTier] = useState<string>('free');
+  const [isExporting, setIsExporting] = useState(false);
+
   useEffect(() => {
+    checkUserTier();
     if (projectId) fetchImages();
   }, [projectId]);
+
+  const checkUserTier = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('plan_tier')
+        .eq('id', user.id)
+        .single();
+        
+      if (!error && profile) {
+        setUserTier(profile.plan_tier);
+      }
+    }
+  };
 
   const fetchImages = async () => {
     setLoading(true);
@@ -60,7 +79,6 @@ export default function DatasetPage() {
         .from('project_files')
         .getPublicUrl(pathForUrl);
 
-      // Cut the Timestamp get only the file name
       const rawName = img.storage_path.split('/').pop() || '';
       const cleanFilename = rawName.replace(/^\d+_/, ''); 
 
@@ -75,32 +93,87 @@ export default function DatasetPage() {
     setLoading(false);
   };
 
+  const handleExportAll = async () => {
+    if (userTier === 'free') {
+      alert("Please upgrade to Pro/Premium tier to export datasets.");
+      return;
+    }
+    if (images.length === 0) {
+      alert("No images available to export.");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:8000'}/api/export-dataset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId })
+      });
+
+      if (!response.ok) throw new Error("Export failed");
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `dataset_${projectId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      a.remove();
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to export dataset. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const filteredImages = images
     .filter((img) => img.filename?.toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((a, b) => {
       switch (sortBy.label) {
-        case 'Recent Date':
-          return new Date(b.upload_at).getTime() - new Date(a.upload_at).getTime();
-        case 'Oldest Date':
-          return new Date(a.upload_at).getTime() - new Date(b.upload_at).getTime();
-        case 'File Name (A-Z)':
-          return (a.filename || '').localeCompare(b.filename || '');
-        case 'File Name (Z-A)':
-          return (b.filename || '').localeCompare(a.filename || '');
-        default:
-          return 0;
+        case 'Recent Date': return new Date(b.upload_at).getTime() - new Date(a.upload_at).getTime();
+        case 'Oldest Date': return new Date(a.upload_at).getTime() - new Date(b.upload_at).getTime();
+        case 'File Name (A-Z)': return (a.filename || '').localeCompare(b.filename || '');
+        case 'File Name (Z-A)': return (b.filename || '').localeCompare(a.filename || '');
+        default: return 0;
       }
     });
 
   return (
     <div className="text-white p-6 w-full">
       {/* Header */}
-      <div className="flex items-center border-b pb-4 border-neutral-800 gap-3 mb-6">
-        <Database className=" text-white" size={28}/>
-        <h1 className="text-xl text-semibold tracking-wide">Dataset</h1>
+      <div className="flex items-center justify-between border-b pb-4 border-neutral-800 mb-6">
+        <div className="flex items-center gap-3">
+          <Database className="text-white" size={28}/>
+          <h1 className="text-xl font-semibold tracking-wide">Dataset</h1>
+        </div>
+        
+        {/* Export All Button */}
+        <div className="flex items-center gap-3">
+          {userTier === 'free' && (
+            <span className="text-xs text-orange-400 font-medium">
+              *Upgrade plan to export
+            </span>
+          )}
+          <button 
+            onClick={handleExportAll}
+            disabled={userTier === 'free' || images.length === 0 || isExporting}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              userTier === 'free' || images.length === 0
+                ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
+                : 'bg-[#B8AB9C] hover:bg-[#B8AB9C]/80 text-white'
+            }`}
+          >
+            {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {isExporting ? 'Exporting...' : 'Export All Dataset'}
+          </button>
+        </div>
       </div>
 
-      {/* Toolbar: Title, Search, Sort, Action Button */}
+      {/* Toolbar: Title, Search, Sort */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
         
         <h2 className="flex flex-row gap-2 text-lg text-gray-200 font-medium"><Images/>Images ({filteredImages.length})</h2>

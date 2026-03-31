@@ -4,12 +4,14 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Boxes, Compass, Flag, Settings, LogOut, UserCircle, House, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Boxes, Compass, Flag, Settings, LogOut, UserCircle, House, ChevronLeft, ChevronRight, Coins, Lock } from 'lucide-react'; // เพิ่ม Coins
 
 type UserProfile = {
     display_name: string;
     email: string;
     avatar_url?: string | null;
+    credits?: number; 
+    plan_tier?: string;
 };
 
 export default function Sidebar() {
@@ -27,7 +29,7 @@ export default function Sidebar() {
 
             if (user) {
                 const { data: profileData } = await supabase.from('profiles')
-                .select('display_name, email, avatar_url')
+                .select('display_name, email, avatar_url, credits, plan_tier')
                 .eq('id', user.id)
                 .single();
                 
@@ -35,6 +37,8 @@ export default function Sidebar() {
                     email: user.email || '',
                     display_name: profileData?.display_name || 'Unknown User',
                     avatar_url: profileData?.avatar_url || null,
+                    credits: profileData?.credits || 0, 
+                    plan_tier: profileData?.plan_tier || 'free',
                 });
             }
             setLoading(false);
@@ -59,6 +63,7 @@ export default function Sidebar() {
         router.push('/');
         router.refresh();
     };
+
     // Function to determine if a link is active for styling sidebar
     const getLinkClasses = (path: string) => {
         const isActive = pathname === path || (path !== '/dashboard' && pathname.startsWith(path));
@@ -98,11 +103,23 @@ export default function Sidebar() {
                     {!collapsed && <span className='whitespace-nowrap'>Dashboard</span>}
                 </Link>
 
-                <Link href="/projects" className={getLinkClasses('/projects')} title={collapsed ? "Projects" : ""}>
+                {user?.plan_tier === 'free' || user?.plan_tier === 'viewer'  ? (
+                    <div className={`flex items-center gap-2 px-4 py-3 text-neutral-400 cursor-not-allowed 
+                        ${collapsed ? "justify-center px-2" : ""}`}
+                        title={collapsed ? "Projects (Locked)" : ""}
+                    >
+                        <Lock size={20} />
+                        {!collapsed && <span className="whitespace-nowrap">Projects</span>}
+                    </div>
+                ) : (
+                    <Link href="/projects" className={`${getLinkClasses('/projects')} 
+                        ${collapsed ? "justify-center px-2" : ""}`}
+                        title={collapsed ? "Projects" : ""}
+                    >
                     <Boxes size={20} />
-                    {!collapsed && <span className='whitespace-nowrap'>Projects</span>}
-                </Link>
-
+                        {!collapsed && <span className="whitespace-nowrap">Projects</span>}
+                    </Link>
+                )}
                 <Link href="/explore" className={getLinkClasses('/explore')} title={collapsed ? "Explore" : ""}>
                     <Compass size={20} />
                     {!collapsed && <span className='whitespace-nowrap'>Explore</span>}
@@ -117,8 +134,27 @@ export default function Sidebar() {
                 </Link>
             </div>
 
+            {/* Credits Section */}
+            {!loading && user && (
+                <div className={`mx-4 mt-2 flex items-center bg-[#2A2A2A] rounded-lg border border-[#3F3F3F] transition-all duration-300 ${
+                    collapsed ? 'flex-col p-2 gap-1 justify-center mx-2' : 'p-3 gap-3'
+                }`}
+                title={collapsed ? `${user.credits || 0} Credits` : ""}
+                >
+                    <Coins size={collapsed ? 18 : 20} className="text-[#B8AB9C] shrink-0" />
+                    {!collapsed ? (
+                        <div className="flex flex-col overflow-hidden">
+                            <span className="text-xs text-neutral-400 font-medium whitespace-nowrap">Available Credits</span>
+                            <span className="text-sm text-white font-bold">{user.credits?.toLocaleString() || 0}</span>
+                        </div>
+                    ) : (
+                        <span className="text-[10px] text-white font-bold">{user.credits || 0}</span>
+                    )}
+                </div>
+            )}
+
             {/* User Profile */}
-            <div className={`border-t border-[#3F3F3F] mt-2 transition-all duration-300 ${collapsed ? 'p-2' : 'p-4'}`}>
+            <div className={`border-t border-[#3F3F3F] mt-4 transition-all duration-300 ${collapsed ? 'p-2' : 'p-4'}`}>
                 {loading ? (
                     <div className={`flex items-center gap-3 animate-pulse ${collapsed ? 'justify-center' : 'px-2'}`}>
                         <div className="w-10 h-10 bg-[#3F3F3F] rounded-full shrink-0"></div>

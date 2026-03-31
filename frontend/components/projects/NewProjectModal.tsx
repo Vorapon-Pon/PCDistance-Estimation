@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createProject } from '@/app/projects/actions';
 import { Plus, Globe, GlobeLock, Loader2, CheckSquare, Square } from 'lucide-react';
@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { createClient } from '@/utils/client';
+import { profile } from 'console';
 
 const PREDEFINED_CLASSES = [
   { name: "person", defaultColor: "#ef4444" },       // Red
@@ -24,11 +26,30 @@ const PREDEFINED_CLASSES = [
 ];
 
 export default function NewProjectModal() {
+    const supabase = createClient();
     const router = useRouter();
 
     const [isOpen, setIsOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [visibility, setVisibility] = useState('public');
+
+    const [userTier, setUserTier] = useState<string>('free');
+
+    useEffect(() => {
+        const fetchUserTier = async () => {
+            const { data: { user }} = await supabase.auth.getUser();
+
+            if(user) {
+                const { data: profileData } = await supabase.from('profiles')
+                .select('plan_tier')
+                .eq('id', user.id)
+                .single();
+
+                setUserTier(profileData?.plan_tier || 'free');
+            }
+        }
+        fetchUserTier();
+    }, [])
 
     const [classSettings, setClassSettings] = useState<Record<string, { selected: boolean, color: string }>>(() => {
         const initial: Record<string, { selected: boolean, color: string }> = {};
@@ -84,13 +105,28 @@ export default function NewProjectModal() {
         window.location.reload(); 
     }
     
+    const canCreateProject = userTier !== 'free' && userTier !== 'viewer';
+
     return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>   
-        <button className="flex items-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-5 py-2.5 rounded-lg transition-all border border-neutral-600">
-          <Plus size={16} />
-          <span>New Project</span>
-        </button>
+      <DialogTrigger asChild> 
+
+        {canCreateProject ? (
+            <button className="flex items-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm px-5 py-2.5 rounded-lg transition-all border border-neutral-600">
+            <Plus size={16} />
+            <span>New Project</span>
+            </button>
+        ) : (
+            <button 
+            className="flex items-center gap-2 bg-neutral-800  text-neutral-400 text-sm px-5 py-2.5 rounded-lg transition-all border border-neutral-600"
+            disabled
+            title="Available for Pro users only"
+            >
+                <Plus size={16} />
+                <span>New Project</span>
+            </button>
+        )}  
+        
       </DialogTrigger>
 
       <DialogContent className="bg-neutral-800 border-neutral-600 text-white sm:max-w-[500px] p-0 overflow-hidden shadow-2xl">

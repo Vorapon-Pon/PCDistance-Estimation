@@ -18,6 +18,13 @@ from projection import get_projected_points
 from supabase import create_client, Client
 from supabase.client import ClientOptions
 from typing import List
+from tusclient import client
+from tusclient.exceptions import TusCommunicationError
+import zipfile
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
+import csv
+import io
 
 app = FastAPI()
 
@@ -75,6 +82,21 @@ class SliceRequest(BaseModel):
     center_z: float
     radius: float = 50.0
     
+export_job_statuses = {}
+
+class ExportPotreeRequest(BaseModel):
+    project_id: str
+    bucket_name: str = "project_files"
+
+class ExportDatasetRequest(BaseModel):
+    project_id: str
+    bucket_name: str = "project_files"
+
+def cleanup_export_file(file_path: str):
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        print(f"Cleaned up temporary export file: {file_path}")
+
 def process_pointcloud(project_id: str, bucket_name: str, file_path: str):
     def update_status(status: str, message: str, progress: int):
         job_statuses[project_id] = {"status": status, "message": message, "progress": progress}
@@ -135,38 +157,65 @@ def process_pointcloud(project_id: str, bucket_name: str, file_path: str):
         total_files = len(all_files)
         print(f"Total files to upload: {total_files}")
 
+        tus_client = client.TusClient(
+            f"{SUPABASE_URL}/storage/v1/upload/resumable",
+            headers={
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "apikey": SUPABASE_KEY,
+                "x-upsert": "true"
+            }
+        )
+        
         for i, local_file_path in enumerate(all_files, 1):
             relative_path = os.path.relpath(local_file_path, output_dir)
             supabase_path = f"{base_upload_path}/{relative_path}".replace("\\", "/")
             
-            upload_url = f"{SUPABASE_URL}/storage/v1/object/{bucket_name}/{supabase_path}"
+            file_size = os.path.getsize(local_file_path)
+            content_type = "application/json" if local_file_path.endswith(".json") else "application/octet-stream"
             
-            headers = {
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-                "apikey": SUPABASE_KEY,
-                # จำลอง file_options={"upsert": "true"}
-                "x-upsert": "true" 
-            }
-            
-            max_retries = 3
-            for attempt in range(max_retries):
+            # if file > 50MB use TUS 
+            if file_size > 50 * 1024 * 1024:
+                print(f"Uploading LARGE file via TUS: {relative_path} ({(file_size/(1024*1024)):.2f} MB)")
                 try:
                     with open(local_file_path, "rb") as f:
-                        response = requests.post(
-                                upload_url, 
-                                headers=headers, 
-                                data=f, 
-                                timeout=None 
-                            )
-                        response.raise_for_status()
-                    break # อัปโหลดสำเร็จ ให้ออกจากลูป retry
-                except Exception as upload_err:
-                    if attempt == max_retries - 1:
-                        raise Exception(f"Failed to upload {relative_path} after 3 attempts: {upload_err}")
-                    print(f"Upload timeout/error for {relative_path}. Retrying ({attempt+1}/{max_retries})...")
-                    time.sleep(2)
+                        uploader = tus_client.uploader(
+                            file_stream=f,
+                            chunk_size=50 * 1024 * 1024,
+                            metadata={
+                                'bucketName': bucket_name,
+                                'objectName': supabase_path,
+                                'contentType': content_type
+                            }
+                        )
+                        uploader.upload()
+                    print(f"TUS Upload success: {relative_path}")
+                except Exception as tus_err:
+                    raise Exception(f"Failed to upload {relative_path} via TUS: {tus_err}")
             
-            # อัปเดต % ทุกๆ การอัปโหลด 50 ไฟล์ (ไม่ให้อัปเดตถี่เกินไป DB จะพัง)
+            else: # small file use normal POST
+                upload_url = f"{SUPABASE_URL}/storage/v1/object/{bucket_name}/{supabase_path}"
+                headers = {
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "apikey": SUPABASE_KEY,
+                    "x-upsert": "true",
+                    "Content-Type": content_type
+                }
+                
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        with open(local_file_path, "rb") as f:
+                            response = requests.post(upload_url, headers=headers, data=f, timeout=None)
+                            if response.status_code >= 400:
+                                print(f"Error details from Supabase: {response.text}")
+                            response.raise_for_status()
+                        break 
+                    except Exception as upload_err:
+                        if attempt == max_retries - 1:
+                            raise Exception(f"Failed to upload {relative_path} after 3 attempts: {upload_err}")
+                        print(f"Upload timeout/error for {relative_path}. Retrying ({attempt+1}/{max_retries})...")
+                        time.sleep(2)
+            
             if i % 50 == 0 or i == total_files:
                 upload_progress = 70 + int((i / total_files) * 20) # วิ่งจาก 70% -> 90%
                 update_status("uploading", f"Uploading... {i}/{total_files} files", upload_progress)
@@ -463,10 +512,11 @@ def process_detection(request: DetectionRequest):
                     
                 class_names = [c["name"].lower() for c in classes_res.data] if classes_res.data else []
                 base_class_map = {
+                    "person": 0,
                     "car": 2,
                     "motorcycle": 3,
                     "truck": 7,
-                    "trafficsign": 11, # อนุโลมใช้ stop sign ของ COCO แทนไปก่อนได้ครับ
+                    "trafficsign": 11, 
                 }
                 
                 custom_class_map = {
@@ -634,6 +684,162 @@ def process_detection(request: DetectionRequest):
 
     except Exception as e:
         print(f"Fatal detection error: {e}")
+
+def process_export_potree(project_id: str, bucket_name: str):
+    export_job_statuses[project_id] = {"status": "processing", "message": "กำลังค้นหาโครงสร้างไฟล์ Potree..."}
+    
+    try:
+        zip_filename = f"potree_{project_id}.zip"
+        zip_filepath = os.path.join(TEMP_DIR, zip_filename)
+        
+        def get_all_files(path):
+            file_list = []
+            res = supabase.storage.from_(bucket_name).list(path)
+            for item in res:
+                if item.get('id') is None: 
+                    file_list.extend(get_all_files(f"{path}/{item['name']}"))
+                else: 
+                    file_list.append(f"{path}/{item['name']}")
+            return file_list
+
+        base_path = f"{project_id}/potree"
+        all_files = get_all_files(base_path)
+        
+        if not all_files:
+            raise ValueError("ไม่พบไฟล์ Potree ในโปรเจกต์นี้")
+
+        with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for i, file_path in enumerate(all_files):
+                filename_only = os.path.basename(file_path)
+                export_job_statuses[project_id]["message"] = f"กำลังดาวน์โหลด... {i+1}/{len(all_files)} ({filename_only})"
+                
+                # 🌟 สร้าง Path ชั่วคราวสำหรับพักไฟล์ขนาดใหญ่
+                file_url = f"{SUPABASE_URL}/storage/v1/object/public/{bucket_name}/{file_path}"
+                temp_download_path = os.path.join(TEMP_DIR, f"temp_{filename_only}")
+                
+                try:
+                    with requests.get(file_url, stream=True, timeout=1800) as r:
+                        r.raise_for_status()
+                        with open(temp_download_path, 'wb') as f:
+                            for chunk in r.iter_content(chunk_size=8192 * 4): 
+                                f.write(chunk)
+                    
+                    export_job_statuses[project_id]["message"] = f"กำลังบีบอัดลง Zip... {i+1}/{len(all_files)} ({filename_only})"
+                    rel_path = os.path.relpath(file_path, base_path)
+                    
+                    zipf.write(temp_download_path, arcname=rel_path)
+                    
+                except Exception as dl_error:
+                    print(f"Failed to download {file_path}: {dl_error}")
+                    raise ValueError(f"โหลดไฟล์ {filename_only} ไม่สำเร็จ: {str(dl_error)}")
+                finally:
+                    if os.path.exists(temp_download_path):
+                        os.remove(temp_download_path)
+
+        export_job_statuses[project_id]["message"] = "บีบอัดไฟล์เสร็จสิ้น กำลังเตรียมดาวน์โหลด!"
+        
+        backend_url = "http://127.0.0.1:8000" 
+        direct_download_url = f"{backend_url}/api/download-potree-export/{project_id}"        
+            
+        export_job_statuses[project_id] = {
+            "status": "completed",
+            "message": "ประมวลผลสำเร็จ กำลังเริ่มดาวน์โหลด!",
+            "download_url": direct_download_url
+        }
+        
+    except Exception as e:
+        print(f"Export Potree Error: {e}")
+        export_job_statuses[project_id] = {"status": "error", "message": str(e)}
+        if 'zip_filepath' in locals() and os.path.exists(zip_filepath):
+            os.remove(zip_filepath)
+
+@app.post("/api/export-potree")
+async def export_potree_endpoint(request: ExportPotreeRequest, background_tasks: BackgroundTasks):
+    export_job_statuses[request.project_id] = {"status": "pending", "message": "เริ่มต้นกระบวนการ Export..."}
+    background_tasks.add_task(process_export_potree, request.project_id, request.bucket_name)
+    return {"status": "processing", "project_id": request.project_id}
+
+@app.get("/api/download-potree-export/{project_id}")
+async def download_potree_export(project_id: str):
+    zip_filename = f"potree_{project_id}.zip"
+    zip_filepath = os.path.join(TEMP_DIR, zip_filename)
+    
+    if not os.path.exists(zip_filepath):
+        raise HTTPException(status_code=404, detail="ไม่พบไฟล์ หรือไฟล์ถูกลบไปแล้ว กรุณา Export ใหม่อีกครั้ง")
+        
+    return FileResponse(
+        path=zip_filepath, 
+        filename=zip_filename, 
+        media_type='application/zip',
+        background=BackgroundTask(cleanup_export_file, zip_filepath)
+    )
+
+@app.get("/api/export-potree-status/{project_id}")
+async def get_export_potree_status(project_id: str):
+    return export_job_statuses.get(project_id, {"status": "not_started"})
+
+@app.post("/api/export-dataset")
+async def export_dataset(request: ExportDatasetRequest):
+    project_id = request.project_id
+    bucket_name = request.bucket_name
+
+    # 1. เตรียมสร้างไฟล์ ZIP
+    zip_filename = f"dataset_{project_id}_{int(time.time())}.zip"
+    zip_filepath = os.path.join(TEMP_DIR, zip_filename)
+
+    with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        
+        folder_path = f"{project_id}/camera_positions"
+        try:
+            storage_files = supabase.storage.from_(bucket_name).list(folder_path)
+            
+            for item in storage_files:
+                actual_filename = item.get("name")
+                
+                if not actual_filename or actual_filename == ".emptyFolderPlaceholder":
+                    continue
+                    
+                file_storage_path = f"{folder_path}/{actual_filename}"
+                file_url = f"{SUPABASE_URL}/storage/v1/object/public/{bucket_name}/{file_storage_path}"
+                
+                resp = requests.get(file_url)
+                if resp.status_code == 200:
+                    if '_' in actual_filename and actual_filename.split('_')[0].isdigit():
+                        clean_filename = actual_filename.split('_', 1)[-1]
+                    else:
+                        clean_filename = actual_filename
+                        
+                    zipf.writestr(clean_filename, resp.content)
+                else:
+                    print(f"Warning: Could not download camera file {actual_filename}")
+        except Exception as e:
+            print(f"Error listing camera_positions from storage: {e}")
+
+        images_res = supabase.table("project_images").select("id, storage_path").eq("project_id", project_id).execute()
+        
+        if images_res.data:
+            for img in images_res.data:
+                storage_path = img["storage_path"]
+                
+                raw_name = storage_path.split('/')[-1]
+                clean_img_filename = raw_name.split('_', 1)[-1] if '_' in raw_name and raw_name.split('_')[0].isdigit() else raw_name
+                
+                img_url = f"{SUPABASE_URL}/storage/v1/object/public/{bucket_name}/{storage_path}"
+                resp = requests.get(img_url)
+                if resp.status_code == 200:
+                    zipf.writestr(f"images/{clean_img_filename}", resp.content)
+
+    if not os.path.exists(zip_filepath) or os.path.getsize(zip_filepath) == 0:
+        if os.path.exists(zip_filepath):
+            os.remove(zip_filepath)
+        raise HTTPException(status_code=400, detail="No files could be exported.")
+
+    return FileResponse(
+        path=zip_filepath, 
+        filename=zip_filename, 
+        media_type='application/zip',
+        background=BackgroundTask(cleanup_export_file, zip_filepath)
+    )
 
 @app.post("/api/run-detection")
 async def start_detection(request: DetectionRequest, background_tasks: BackgroundTasks):
