@@ -63,7 +63,7 @@ export default function EstimationPage() {
   const startDetection = useDetectionStore(state => state.startDetection);
   const jobs = useDetectionStore(state => state.jobs);
   
-  const CREDITS_PER_IMAGE = 2;
+  const CREDITS_PER_IMAGE = 1;
 
   const currentJob = selectedImage ? jobs[selectedImage.id] : null;
   const currentImageStatus = currentJob?.status || selectedImage?.detection_status || 'idle';
