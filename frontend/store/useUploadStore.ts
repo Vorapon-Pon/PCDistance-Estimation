@@ -219,9 +219,10 @@ export const useUploadStore = create<UploadState>((set, get) => ({
             processing_status: 'pending',
             user_id: currentUser.id
           });
+          const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
-          fetch("http://127.0.0.1:8000/api/convert-pointcloud", {
-            method: "POST", 
+          fetch(`${backendUrl}/api/convert-pointcloud`, {
+            method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ project_id: projectId, bucket_name: "project_files", file_path: filePath })
           }).catch(console.error);
