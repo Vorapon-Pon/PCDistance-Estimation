@@ -60,8 +60,8 @@ function SettingsContent() {
   const isUploader = currentPlan === 'uploader';
 
   const uploaderPrice = isViewer ? 30 : 50;
-  const VIEWER_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_VIEWER_PRICE_ID!;
-  const UPLOADER_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_UPLOADER_PRICE_ID!;
+  const VIEWER_PRICE_ID = process.env.NEXT_PUBLIC_VIEWER_PRICE_ID!;
+  const UPLOADER_PRICE_ID = process.env.NEXT_PUBLIC_UPLOADER_PRICE_ID!;
   const UPLOADER_UPGRADE_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_UPLOADER_UPGRADE_PRICE_ID!;
 
   if (isFetchingProfile) {

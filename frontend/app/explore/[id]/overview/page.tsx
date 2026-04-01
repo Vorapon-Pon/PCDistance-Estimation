@@ -149,9 +149,10 @@ export default function ExploreProjectOverviewPage() {
   // --- UI หน้า Loading / Error ---
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <Loader2 className="w-8 h-8 text-teal-400 animate-spin" />
-      </div>
+      <div className="flex flex-col items-center justify-center h-64 text-neutral-500">
+          <Loader2 className="w-8 h-8 animate-spin mb-4" />
+          <p>Loading Data...</p>
+        </div>
     );
   }
 
