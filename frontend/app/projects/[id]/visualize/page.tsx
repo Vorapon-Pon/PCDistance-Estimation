@@ -37,6 +37,10 @@ export default function VisualizePage() {
     imageUrl: '/api/placeholder/800/400'
   });
 
+  const [detectedObjects, setDetectedObjects] = useState<any[]>([]);
+  const [classColors, setClassColors] = useState<Record<string, string>>({});
+  const [minConfidence, setMinConfidence] = useState<number>(50);
+
   const BUCKET_NAME = 'project_files';
 
   useEffect(() => {
@@ -112,9 +116,101 @@ export default function VisualizePage() {
     }
   }, [projectId, supabase]);
 
+  useEffect(() => {
+    const fetchObjectsAndColors = async () => {
+      if (!activeData.id || !projectId) return;
+
+      const { data: classData } = await supabase
+        .from('project_classes')
+        .select('name, color')
+        .eq('project_id', projectId);
+      
+      if (classData) {
+        const colorMap: Record<string, string> = {};
+        classData.forEach(cls => { colorMap[cls.name] = cls.color; });
+        setClassColors(colorMap);
+      }
+
+      const { data: objData } = await supabase
+        .from('detected_objects')
+        .select('*')
+        .eq('image_id', activeData.id);
+        
+      if (objData) {
+        setDetectedObjects(objData);
+      }
+    };
+
+    fetchObjectsAndColors();
+  }, [activeData.id, projectId, supabase]);
+
+  const customHotspot = (hotSpotDiv: HTMLDivElement, args: any) => {
+    const { obj, color, spanYaw, spanPitch } = args;
+    
+    hotSpotDiv.style.width = '0px';
+    hotSpotDiv.style.height = '0px';
+
+    // เก็บข้อมูลองศาไว้ให้ Event Zoom ดึงไปคำนวณไซส์
+    hotSpotDiv.setAttribute('data-span-yaw', spanYaw.toString());
+    hotSpotDiv.setAttribute('data-span-pitch', spanPitch.toString());
+    
+    // ย้ายการทำกรอบไปไว้ที่ div ตัวใน และใช้ transform: translate(-50%, -50%) เพื่อรักษากึ่งกลาง
+    hotSpotDiv.innerHTML = `
+      <div class="custom-bbox-box" style="
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        border: 2px solid ${color}; 
+        background-color: ${color}33; 
+        pointer-events: none;
+        box-sizing: border-box;
+      ">
+        <div style="
+          position: absolute;
+          top: -24px;
+          left: -2px;
+          background-color: ${color}; 
+          color: white; 
+          font-size: 10px;
+          font-weight: bold;
+          padding: 2px 4px;
+          border-radius: 4px 4px 0 0;
+          white-space: nowrap;
+        ">
+          ${obj.class_name} (${Math.round(obj.confidence * 100)}%)
+          ${obj.distance_from_camera ? `⇋ ${obj.distance_from_camera.toFixed(2)}m` : ''}
+        </div>
+      </div>
+    `;
+  };
+
   const initPannellum = () => {
     if ((window as any).pannellum && panoramaRef.current && activeData.imageUrl) {
       if (viewer) viewer.destroy();
+
+      const filteredObjects = detectedObjects.filter(obj => obj.confidence >= (minConfidence / 100));
+
+      const dynamicHotSpots = filteredObjects.map(obj => {
+        const centerX = (obj.bbox_xmin + obj.bbox_xmax) / 2;
+        const centerY = (obj.bbox_ymin + obj.bbox_ymax) / 2;
+        
+        const yaw = (centerX - 0.5) * 360;
+        const pitch = (0.5 - centerY) * 180;
+        
+        const spanYaw = (obj.bbox_xmax - obj.bbox_xmin) * 360;
+        const spanPitch = (obj.bbox_ymax - obj.bbox_ymin) * 180;
+
+        const color = classColors[obj.class_name] || '#10b981';
+
+        return {
+          pitch: pitch,
+          yaw: yaw,
+          cssClass: 'custom-bbox-anchor', // ป้องกัน Pannellum ใส่สไตล์ไอคอนเริ่มต้น
+          createTooltipFunc: customHotspot,
+          createTooltipArgs: { obj, color, spanYaw, spanPitch }
+        };
+      });
 
       const newViewer = (window as any).pannellum.viewer(panoramaRef.current, {
         type: "equirectangular",
@@ -122,15 +218,44 @@ export default function VisualizePage() {
         autoLoad: true,
         compass: true,
         northOffset: activeData.coords.heading || 0, 
-        crossOrigin: "anonymous"
+        crossOrigin: "anonymous",
+        hotSpots: dynamicHotSpots
       });
+      
+      const resizeHotspots = () => {
+        const anchors = document.querySelectorAll('.custom-bbox-anchor');
+        if (anchors.length === 0) return;
+        
+        const container = newViewer.getContainer();
+        if(!container) return;
+
+        const hfov = newViewer.getHfov();
+        const width = container.clientWidth;
+        const ppd = width / hfov; // คำนวณ 1 องศาเท่ากับกี่ Pixel
+        
+        anchors.forEach(anchor => {
+          const anchorElem = anchor as HTMLElement;
+          const spanYaw = parseFloat(anchorElem.getAttribute('data-span-yaw') || '0');
+          const spanPitch = parseFloat(anchorElem.getAttribute('data-span-pitch') || '0');
+          
+          const innerBox = anchorElem.querySelector('.custom-bbox-box') as HTMLElement;
+          if (innerBox) {
+            innerBox.style.width = `${spanYaw * ppd}px`;
+            innerBox.style.height = `${spanPitch * ppd}px`;
+          }
+        });
+      };
+
+      newViewer.on('zoomchange', resizeHotspots);
+      setTimeout(resizeHotspots, 100);
+
       setViewer(newViewer);
     }
   };
 
   useEffect(() => {
     if (activeData.imageUrl) initPannellum();
-  }, [activeData.imageUrl]);
+  }, [activeData.imageUrl, detectedObjects, classColors, minConfidence]);
 
   const iframeSrc = `/potree/viewer.html?cloudUrl=${encodeURIComponent(potreeUrl)}`;
 
@@ -292,7 +417,7 @@ export default function VisualizePage() {
             <Crosshair size={14} />
             Calibrate This View
           </button>
-
+          
           {showRadiusModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
               <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-700 max-w-sm w-full shadow-2xl">
@@ -372,6 +497,22 @@ export default function VisualizePage() {
                </div>
              )}
           </div>
+            {/*  
+          <div className="absolute top-4 left-4 z-10 bg-black/60 p-3 rounded-lg border border-neutral-700 w-64">
+            <div className="flex justify-between text-xs mb-2">
+              <span className="text-zinc-400">Min Confidence</span>
+              <span className="text-white font-mono">{minConfidence}%</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={minConfidence}
+              onChange={(e) => setMinConfidence(Number(e.target.value))}
+              className="w-full accent-emerald-500 bg-zinc-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+            />
+          </div>
+          */}
         </div>
       </div>
 

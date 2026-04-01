@@ -112,19 +112,40 @@ export default function DatasetPage() {
   // --- Data Fetching ---
   const fetchImages = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('project_images')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('upload_at', { ascending: false });
+    let allImages: any[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    let hasMore = true;
 
-    if (error) {
-      console.error('Error fetching images:', error);
-      setLoading(false);
-      return;
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('project_images')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('upload_at', { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      if (error) {
+        console.error('Error fetching images:', error);
+        setLoading(false);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        allImages = [...allImages, ...data];
+        if (data.length < pageSize) {
+          hasMore = false; 
+        } else {
+          from += pageSize; 
+        }
+      } else {
+        hasMore = false;
+      }
     }
 
-    const formattedImages = data.map((img: any) => {
+    console.log("Total images fetched:", allImages.length);
+
+    const formattedImages = allImages.map((img: any) => {
       const pathForUrl = img.thumbnail_path || img.storage_path;
       const { data: publicUrlData } = supabase.storage
         .from('project_files')
@@ -146,17 +167,38 @@ export default function DatasetPage() {
 
   const fetchCameraPositions = async () => {
     setLoadingCamera(true);
-    const { data, error } = await supabase
-      .from('camera_position')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('image_filename', { ascending: true });
+    let allPositions: any[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    let hasMore = true;
 
-    if (error) {
-      console.error('Error fetching camera positions:', error);
-    } else {
-      setCameraPositions(data || []);
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('camera_position')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('image_filename', { ascending: true })
+        .range(from, from + pageSize - 1);
+
+      if (error) {
+        console.error('Error fetching camera positions:', error);
+        setLoadingCamera(false);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        allPositions = [...allPositions, ...data];
+        if (data.length < pageSize) {
+          hasMore = false;
+        } else {
+          from += pageSize;
+        }
+      } else {
+        hasMore = false;
+      }
     }
+
+    setCameraPositions(allPositions);
     setLoadingCamera(false);
   };
 
