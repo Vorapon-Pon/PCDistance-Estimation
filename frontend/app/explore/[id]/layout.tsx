@@ -1,12 +1,13 @@
 import ExploreSidebar from "@/components/explore/ExploreSideBar";
 
-export default function ExploreProjectLayout({
+export default async function ExploreProjectLayout({
   children,
   params,
 }: {
   children: React.ReactNode;
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+    const { id } = await params;
     return (
         <div className="flex min-h-screen bg-neutral-900">
             <ExploreSidebar/>
