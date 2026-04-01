@@ -5,7 +5,10 @@ import { useParams } from 'next/navigation';
 import { createClient } from '@/utils/client';
 import { Search, ChevronDown, Database, Loader2, Image as ImageIcon, Images, ArrowUpAZ, ArrowDownAZ, ArrowDown01, ArrowUp01, Download } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import CreditConfirmModal from '@/components/projects/CreditConfirmModal'; 
 import Image from 'next/image';
+import { processUploadCredits } from '../actions'; 
+import { toast } from 'sonner';
 
 type ProjectImage = {
   id: string;
@@ -34,27 +37,45 @@ export default function DatasetPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState(SORT_OPTIONS[0]);
 
-  // State สำหรับ Export และ เช็ค Tier
   const [userTier, setUserTier] = useState<string>('free');
+  const [userCredits, setUserCredits] = useState<number>(0);
   const [isExporting, setIsExporting] = useState(false);
+  
+  const [cameraFileCount, setCameraFileCount] = useState<number>(0);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    checkUserTier();
-    if (projectId) fetchImages();
+    checkUserData();
+    if (projectId) {
+      fetchImages();
+      fetchCameraPositionCount();
+    }
   }, [projectId]);
 
-  const checkUserTier = async () => {
+  const checkUserData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data: profile, error } = await supabase
         .from('profiles')
-        .select('plan_tier')
+        .select('plan_tier, credits')
         .eq('id', user.id)
         .single();
         
       if (!error && profile) {
         setUserTier(profile.plan_tier);
+        setUserCredits(profile.credits || 0);
       }
+    }
+  };
+
+  const fetchCameraPositionCount = async () => {
+    const { count, error } = await supabase
+      .from('camera_position_files')
+      .select('*', { count: 'exact', head: true })
+      .eq('project_id', projectId);
+      
+    if (!error && count !== null) {
+      setCameraFileCount(count);
     }
   };
 
@@ -65,7 +86,6 @@ export default function DatasetPage() {
     const pageSize = 1000;
     let hasMore = true;
 
-    // วนลูปดึงทีละ 1,000 รูปจนกว่าจะหมด
     while (hasMore) {
       const { data, error } = await supabase
         .from('project_images')
@@ -83,16 +103,14 @@ export default function DatasetPage() {
       if (data && data.length > 0) {
         allImages = [...allImages, ...data];
         if (data.length < pageSize) {
-          hasMore = false; // ถ้าข้อมูลที่ได้มาน้อยกว่า 1000 แปลว่าหมดแล้ว
+          hasMore = false; 
         } else {
-          from += pageSize; // ขยับช่วงไปดึง 1000 ถัดไป
+          from += pageSize; 
         }
       } else {
         hasMore = false;
       }
     }
-
-    console.log("Total images fetched:", allImages.length);
 
     const formattedImages = allImages.map((img: any) => {
       const pathForUrl = img.thumbnail_path || img.storage_path;
@@ -114,18 +132,46 @@ export default function DatasetPage() {
     setLoading(false);
   };
 
-  const handleExportAll = async () => {
+  const totalCost = (images.length * 0.1) + (cameraFileCount * 2);
+
+  const handleExportClick = () => {
     if (userTier === 'free') {
-      alert("Please upgrade to Pro/Premium tier to export datasets.");
+      alert("Please upgrade to Viewer/Uploader tier to export datasets.");
       return;
     }
     if (images.length === 0) {
       alert("No images available to export.");
       return;
     }
+    setIsModalOpen(true);
+  };
+
+  const executeExportAndDeductCredit = async () => {
+    if (userCredits < totalCost) {
+      toast.error('You do not have enough credits.');
+      return;
+    }
 
     setIsExporting(true);
+
     try {
+      const creditResult = await processUploadCredits(
+        totalCost, 
+        'EXPORT_DATA', 
+        `Exported Dataset: ${images.length} images, ${cameraFileCount} cam files`
+      );
+
+      if (!creditResult.success) {
+        toast.error(creditResult.error);
+        setIsExporting(false);
+        setIsModalOpen(false);
+        return;
+      }
+
+      setUserCredits(prev => prev - totalCost);
+      setIsModalOpen(false);
+      toast.success('Credits deducted. Preparing download...');
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/export-dataset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -143,9 +189,11 @@ export default function DatasetPage() {
       a.click();
       window.URL.revokeObjectURL(downloadUrl);
       a.remove();
+      
+      toast.success('Download started!');
     } catch (error) {
       console.error('Export error:', error);
-      alert('Failed to export dataset. Please try again.');
+      toast.error('Failed to export dataset. Please try again.');
     } finally {
       setIsExporting(false);
     }
@@ -164,7 +212,7 @@ export default function DatasetPage() {
     });
 
   return (
-    <div className="text-white p-6 w-full">
+    <div className="text-white p-6 w-full relative">
       {/* Header */}
       <div className="flex items-center justify-between border-b pb-4 border-neutral-800 mb-6">
         <div className="flex items-center gap-3">
@@ -180,16 +228,16 @@ export default function DatasetPage() {
             </span>
           )}
           <button 
-            onClick={handleExportAll}
+            onClick={handleExportClick} 
             disabled={userTier === 'free' || images.length === 0 || isExporting}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               userTier === 'free' || images.length === 0
                 ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
-                : 'bg-[#B8AB9C] hover:bg-[#B8AB9C]/80 text-white'
+                : 'bg-[#B8AB9C] hover:bg-[#B8AB9C]/80 text-black'
             }`}
           >
             {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {isExporting ? 'Exporting...' : 'Export All Dataset'}
+            {isExporting ? 'Preparing Export...' : 'Export All Dataset'}
           </button>
         </div>
       </div>
@@ -273,6 +321,24 @@ export default function DatasetPage() {
           ))}
         </div>
       )}
+      
+      {/* ใช้งาน Credit Confirm Modal */}
+      <CreditConfirmModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onConfirm={executeExportAndDeductCredit}
+        title="Confirm Dataset Export"
+        description="The calculated credits will be deducted from your account to export this dataset. This action cannot be undone."
+        totalCost={totalCost}
+        remainCredit={userCredits - totalCost}
+        isLoading={isExporting}
+        confirmText="Confirm & Export"
+        details={[
+          { label: 'Images to Export', value: `${images.length} images (0.1 cr/image)` },
+          { label: 'Camera Data', value: `${cameraFileCount} files (2 cr/file)` },
+          { label: 'Current Credits', value: userCredits.toFixed(2) }
+        ]}
+      />
     </div>
   );
 }

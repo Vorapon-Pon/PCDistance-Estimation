@@ -53,11 +53,11 @@ export default function CreditConfirmModal({
           {/* สรุปราคา */}
           <div className="flex justify-between items-center text-lg">
             <span className="text-zinc-300">Total Cost:</span>
-            <span className="text-emerald-400 font-bold">{totalCost} credits</span>
+            <span className="text-emerald-400 font-bold">{totalCost.toFixed(2)} credits</span>
           </div>
           <div className="flex justify-between items-center text-lg">
             <span className="text-neutral-600 text-sm">Remaining credits:</span>
-            <span className="text-neutral-400 text-sm">{remainCredit} credits</span>
+            <span className="text-neutral-400 text-sm">{remainCredit.toFixed(2)} credits</span>
           </div>
         </div>
 

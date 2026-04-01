@@ -175,9 +175,9 @@ export default function UploadPage() {
       else if (['txt', 'csv'].includes(ext || '')) cameraCount++;
     });
 
-    const imageCost = imageCount * 1; 
+    const imageCost = imageCount * 0.1; 
     const pointCloudCost = pointCloudCount * 10; 
-    const cameraCost = cameraCount * 1;
+    const cameraCost = cameraCount * 2;
 
     const totalCost = imageCost + pointCloudCost + cameraCost;
     
