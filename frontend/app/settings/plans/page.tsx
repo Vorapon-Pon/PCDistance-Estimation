@@ -60,9 +60,9 @@ function SettingsContent() {
   const isUploader = currentPlan === 'uploader';
 
   const uploaderPrice = isViewer ? 30 : 50;
-  const VIEWER_PRICE_ID = 'price_1TG0S4Gt2ldzakk0h7V9m03S'; 
-  const UPLOADER_PRICE_ID = 'price_1TG0SPGt2ldzakk0u8fdoEeo'; 
-  const UPLOADER_UPGRADE_PRICE_ID = 'YOUR_STRIPE_UPLOADER_UPGRADE_PRICE_ID_30'; 
+  const VIEWER_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_VIEWER_PRICE_ID!;
+  const UPLOADER_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_UPLOADER_PRICE_ID!;
+  const UPLOADER_UPGRADE_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_UPLOADER_UPGRADE_PRICE_ID!;
 
   if (isFetchingProfile) {
     return <div className="text-white flex items-center justify-center h-64 gap-2"><Loader2 className="animate-spin" /> Loading your plan data...</div>;
@@ -137,7 +137,7 @@ function SettingsContent() {
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-blue-400" /> View Object Detection</li>
             </ul>
             <button 
-              onClick={() => handleBuyPlan(VIEWER_PRICE_ID, 'subscription', 'viewer', 0)}
+              onClick={() => handleBuyPlan(VIEWER_PRICE_ID, 'subscription', 'viewer', 200)}
               disabled={isLoading !== null || isViewer || isUploader}
               className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -163,7 +163,7 @@ function SettingsContent() {
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-teal-500" /> Priority Processing</li>
             </ul>
             <button 
-              onClick={() => handleBuyPlan(isViewer ? UPLOADER_UPGRADE_PRICE_ID : UPLOADER_PRICE_ID, 'subscription', 'uploader', 0)}
+              onClick={() => handleBuyPlan(isViewer ? UPLOADER_UPGRADE_PRICE_ID : UPLOADER_PRICE_ID, 'subscription', 'uploader', 500)}
               disabled={isLoading !== null || isUploader}
               className="w-full bg-[#38b2ac] hover:bg-[#319795] text-white py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >

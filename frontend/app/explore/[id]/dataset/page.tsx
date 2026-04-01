@@ -60,20 +60,41 @@ export default function DatasetPage() {
 
   const fetchImages = async () => {
     setLoading(true);
-    
-    const { data, error } = await supabase
-      .from('project_images')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('upload_at', { ascending: false });
+    let allImages: any[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    let hasMore = true;
 
-    if (error) {
-      console.error('Error fetching images:', error);
-      setLoading(false);
-      return;
+    // วนลูปดึงทีละ 1,000 รูปจนกว่าจะหมด
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('project_images')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('upload_at', { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      if (error) {
+        console.error('Error fetching images:', error);
+        setLoading(false);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        allImages = [...allImages, ...data];
+        if (data.length < pageSize) {
+          hasMore = false; // ถ้าข้อมูลที่ได้มาน้อยกว่า 1000 แปลว่าหมดแล้ว
+        } else {
+          from += pageSize; // ขยับช่วงไปดึง 1000 ถัดไป
+        }
+      } else {
+        hasMore = false;
+      }
     }
 
-    const formattedImages = data.map((img: any) => {
+    console.log("Total images fetched:", allImages.length);
+
+    const formattedImages = allImages.map((img: any) => {
       const pathForUrl = img.thumbnail_path || img.storage_path;
       const { data: publicUrlData } = supabase.storage
         .from('project_files')

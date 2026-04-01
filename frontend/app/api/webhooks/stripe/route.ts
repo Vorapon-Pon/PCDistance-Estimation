@@ -54,8 +54,10 @@ export async function POST(req: Request) {
         } else if (mode === 'subscription') {
           let currentPeriodEnd = null;
           if (session.subscription) {
-            const subscription = (await stripe.subscriptions.retrieve(session.subscription as string)) as Stripe.Subscription;
-            currentPeriodEnd = new Date()
+            const subscription = (await stripe.subscriptions.retrieve(
+              session.subscription as string
+            )) as Stripe.Subscription;
+            currentPeriodEnd = new Date((subscription as any).current_period_end * 1000);
           }
 
           const { error: profileError } = await supabaseAdmin.from('profiles').update({ 
