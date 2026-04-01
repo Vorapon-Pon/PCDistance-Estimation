@@ -163,17 +163,6 @@ export default function UploadPage() {
     setSelectedFiles(prev => prev.filter((_, index) => index !== indexToRemove));
   };
 
-  // --- Start Upload (โยนเข้า Store) ---
-  const startUpload = () => {
-    if (selectedFiles.length === 0) return;
-    if (!batchName.trim()) { toast.error('Please enter a Batch Name!'); return; }
-    
-    startGlobalUpload(projectId, batchName, selectedFiles);
-    
-    setBatchName('');
-    setSelectedFiles([]);
-  };
-
   const calculateCosts = () => {
     let imageCount = 0;
     let pointCloudCount = 0;

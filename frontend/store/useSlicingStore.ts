@@ -77,8 +77,9 @@ export const useSlicingStore = create<SlicingState>((set, get) => ({
 
       set({ statusMessage: 'Sending Data to Slicing API...' });
 
-      // API Python Backend
-      const startRes = await fetch('http://127.0.0.1:8000/api/slice-pointcloud', {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+      const startRes = await fetch(`${backendUrl}/api/slice-pointcloud`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -102,7 +103,7 @@ export const useSlicingStore = create<SlicingState>((set, get) => ({
       // 5. เริ่ม Polling เช็คสถานะทุกๆ 3 วินาที
       const pollInterval = setInterval(async () => {
         try {
-          const statusRes = await fetch(`http://127.0.0.1:8000/api/slice-status/${projectId}`);
+          const statusRes = await fetch(`${backendUrl}/api/slice-status/${projectId}`);
           if (!statusRes.ok) return;
 
           const statusData = await statusRes.json();
