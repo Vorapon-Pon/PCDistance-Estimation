@@ -116,7 +116,7 @@ export default async function DashboardPage() {
                 />
                 <StatCard 
                     title="Credits Usage" 
-                    value={creditsUsed.toString()}
+                    value={(creditsUsed.toFixed(2)).toString()}
                     subText={`${profile?.credits || 0} Credits Remaining`}
                     icon={<LinkIcon className="text-white" size={36} />} 
                 />

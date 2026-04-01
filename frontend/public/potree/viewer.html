@@ -29,28 +29,39 @@
     <script src="./libs/plasio/js/laslaz.js"></script>
 
     <div class="potree_container" style="position: absolute; width: 100%; height: 100%; left: 0px; top: 0px; ">
-        
         <div id="potree_render_area"></div>
-        
         <div id="potree_sidebar_container"></div>
-
     </div>
+
     <script>
     const urlParams = new URLSearchParams(window.location.search);
     const cloudUrl = urlParams.get('cloudUrl');
 
-    // สร้างตัวแปร Global ไว้เก็บรถ จะได้ขยับมันได้จากที่อื่น
     let globalCarMesh = null;
+    let isFirstCameraUpdate = true; // เพิ่มตัวแปรสำหรับเช็คการโหลดครั้งแรก
 
     if (!cloudUrl) {
         document.getElementById('potree_render_area').innerHTML = '<h2 style="color:white; text-align:center; margin-top:20%;">No Point Cloud URL Provided</h2>';
     } else {
         window.viewer = new Potree.Viewer(document.getElementById("potree_render_area"));
         
-        viewer.setEDLEnabled(true);
+        viewer.setEDLEnabled(false);
         viewer.setFOV(60);
         viewer.setPointBudget(2_000_000);
         viewer.setBackground("black");
+
+        const renderArea = document.getElementById("potree_render_area");
+        renderArea.addEventListener("webglcontextlost", function(event) {
+            event.preventDefault();
+            console.error("WebGL Context Lost!");
+            renderArea.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:white; background:#111;">
+                    <h3 style="color:#ef4444;">หน่วยความจำการ์ดจอเต็ม (WebGL Context Lost)</h3>
+                    <p>ระบบใช้ทรัพยากรกราฟิกหนักเกินไป กำลังโหลด 3D Viewer ใหม่ใน 3 วินาที...</p>
+                </div>
+            `;
+            setTimeout(() => { window.location.reload(); }, 3000);
+        }, false);
 
         viewer.loadGUI(() => {
             viewer.setLanguage('en');
@@ -58,7 +69,6 @@
             viewer.toggleSidebar();
         });
 
-        // โหลด Point Cloud ครั้งแรก
         Potree.loadPointCloud(cloudUrl, "Point Cloud", e => {
             let scene = viewer.scene;
             let pointcloud = e.pointcloud;
@@ -68,16 +78,27 @@
             material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
             scene.addPointCloud(pointcloud);
 
-            // ==========================================
-            // สร้าง Camera/Car แค่ครั้งเดียว
-            // ==========================================
-            const carGeom = new THREE.BoxGeometry(2, 1, 1); 
-            const carMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF });
-            globalCarMesh = new THREE.Mesh(carGeom, carMat);
+            // ====================
+            // Car model
+            // ====================
+            globalCarMesh = new THREE.Group();
+
+            // (Body)
+            const bodyGeom = new THREE.BoxGeometry(2, 4, 1);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6 }); // สีฟ้า
+            const body = new THREE.Mesh(bodyGeom, bodyMat);
+            body.position.z = 0.5; // ยกขึ้นเหนือพื้นเล็กน้อย
+            globalCarMesh.add(body);
+
+            // (Roof)
+            const roofGeom = new THREE.BoxGeometry(1.8, 2, 0.8);
+            const roofMat = new THREE.MeshStandardMaterial({ color: 0x60a5fa }); // สีฟ้าอ่อน
+            const roof = new THREE.Mesh(roofGeom, roofMat);
+            roof.position.set(0, -0.5, 1.4); 
+            globalCarMesh.add(roof);
+
             viewer.scene.scene.add(globalCarMesh);
 
-            // ให้กล้องซูมไปเห็นภาพรวมของโปรเจกต์ตอนโหลดเสร็จครั้งแรก
-            viewer.fitToScreen();
         });
     }
 
@@ -98,12 +119,14 @@
                 globalCarMesh.rotation.y = -THREE.MathUtils.degToRad(roll); 
             }
 
-            if (window.viewer) {
-                window.viewer.scene.view.position.set(camX, camY, camZ); 
+            if (window.viewer && isFirstCameraUpdate) {
+                window.viewer.scene.view.position.set(camX + 15, camY - 15, camZ + 10); 
                 window.viewer.scene.view.lookAt(new THREE.Vector3(camX, camY, camZ));
+
+                isFirstCameraUpdate = false; 
             }
         }
     });
-</script>
+    </script>
 </body>
 </html>

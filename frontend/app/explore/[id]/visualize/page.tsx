@@ -10,6 +10,8 @@ import {
 import { toast } from 'sonner';
 import Script from 'next/script';
 import { useSlicingStore } from '@/store/useSlicingStore'; 
+import CreditConfirmModal from '@/components/projects/CreditConfirmModal';
+import { processUploadCredits } from '../actions';
 
 export default function VisualizePage() {
   const params = useParams();
@@ -32,9 +34,15 @@ export default function VisualizePage() {
   const [potreeUrl, setPotreeUrl] = useState<string>('');
   
   const [userTier, setUserTier] = useState<string>('free');
+  const [userCredits, setUserCredits] = useState<number>(0);
+  const [fileSizeBytes, setFileSizeBytes] = useState<number>(0);
+
   const [rawLasPath, setRawLasPath] = useState<string>('');
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const [exportTarget, setExportTarget] = useState<'las' | 'potree' | null>(null);
   
   const [viewMode, setViewMode] = useState<'split' | '3d' | '360'>('split');
 
@@ -55,16 +63,17 @@ export default function VisualizePage() {
     async function fetchVisualizeData() {
       setIsLoading(true);
       try {
-        // 1. Fetch User Profile for Plan Tier
+        // 1. Fetch User Profile for Plan Tier & Credits
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('plan_tier')
+            .select('plan_tier, credits')
             .eq('id', user.id)
             .single();
           if (profile) {
             setUserTier(profile.plan_tier);
+            setUserCredits(profile.credits || 0);
           }
         }
 
@@ -86,6 +95,19 @@ export default function VisualizePage() {
         if (pointCloud) {
           if (pointCloud.storage_path) {
             setRawLasPath(pointCloud.storage_path);
+
+            const pathParts = pointCloud.storage_path.split('/');
+            const fileName = pathParts.pop();
+            const folderPath = pathParts.join('/');
+            
+            if (fileName && folderPath) {
+              const { data: fileList } = await supabase.storage.from(BUCKET_NAME).list(folderPath, {
+                search: fileName
+              });
+              if (fileList && fileList.length > 0) {
+                setFileSizeBytes(fileList[0].metadata?.size || 0);
+              }
+            }
           }
 
           if (pointCloud.potree_url) {
@@ -181,12 +203,9 @@ export default function VisualizePage() {
     
     hotSpotDiv.style.width = '0px';
     hotSpotDiv.style.height = '0px';
-
-    // เก็บข้อมูลองศาไว้ให้ Event Zoom ดึงไปคำนวณไซส์
     hotSpotDiv.setAttribute('data-span-yaw', spanYaw.toString());
     hotSpotDiv.setAttribute('data-span-pitch', spanPitch.toString());
     
-    // ย้ายการทำกรอบไปไว้ที่ div ตัวใน และใช้ transform: translate(-50%, -50%) เพื่อรักษากึ่งกลาง
     hotSpotDiv.innerHTML = `
       <div class="custom-bbox-box" style="
         position: absolute;
@@ -238,7 +257,7 @@ export default function VisualizePage() {
         return {
           pitch: pitch,
           yaw: yaw,
-          cssClass: 'custom-bbox-anchor', // ป้องกัน Pannellum ใส่สไตล์ไอคอนเริ่มต้น
+          cssClass: 'custom-bbox-anchor', 
           createTooltipFunc: customHotspot,
           createTooltipArgs: { obj, color, spanYaw, spanPitch }
         };
@@ -263,7 +282,7 @@ export default function VisualizePage() {
 
         const hfov = newViewer.getHfov();
         const width = container.clientWidth;
-        const ppd = width / hfov; // คำนวณ 1 องศาเท่ากับกี่ Pixel
+        const ppd = width / hfov; 
         
         anchors.forEach(anchor => {
           const anchorElem = anchor as HTMLElement;
@@ -301,24 +320,69 @@ export default function VisualizePage() {
     }
   }, [activeData]); 
 
-  const handleExport = async (type: 'las' | 'potree') => {
+  const calculateExportCost = (sizeInBytes: number, type: 'las' | 'potree') => {
+    const gbSize = sizeInBytes / (1024 * 1024 * 1024);
+    let baseCost = 15; // < 1GB
+
+    if (gbSize > 10) baseCost = 100; 
+    else if (gbSize >= 5) baseCost = 75; // 5 - 10GB
+    else if (gbSize >= 3) baseCost = 50; // 3 - 5GB
+    else if (gbSize >= 1) baseCost = 25; // 1 - 3GB
+
+    return type === 'potree' ? baseCost + 10 : baseCost;
+  };
+
+  const getGbString = (bytes: number) => {
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2);
+  };
+
+  const initiateExport = (type: 'las' | 'potree') => {
     setShowExportMenu(false);
 
     if (userTier === 'free') {
-      toast.error('การ Export สงวนไว้สำหรับผู้ใช้ระดับ Viewer ขึ้นไป กรุณาอัปเกรดแผนของคุณ');
+      toast.error('Please upgrade your plans to Viewer or higher to export data.');
       return;
     }
 
+    if (!rawLasPath) {
+      toast.error('No original .las file found in the system for price estimation.');
+      return;
+    }
+
+    setExportTarget(type);
+    setShowCreditModal(true);
+  };
+
+  const handleConfirmExport = async () => {
+    if (!exportTarget) return;
+
+    const cost = calculateExportCost(fileSizeBytes, exportTarget);
+
+    setIsExporting(true);
+    
+    const result = await processUploadCredits(
+      cost,
+      'EXPORT_DATA',
+      `Exported ${exportTarget.toUpperCase()} data for project ${projectData?.project_name || projectId}`
+    );
+
+    if (!result.success) {
+      toast.error(result.error);
+      setIsExporting(false);
+      setShowCreditModal(false);
+      return;
+    }
+
+    toast.success(`Credits deducted. Preparing data for you...`);
+    setUserCredits(prev => prev - cost);
+    setShowCreditModal(false);
+
+    executeActualExport(exportTarget);
+  };
+
+  const executeActualExport = async (type: 'las' | 'potree') => {
     try {
       if (type === 'las') {
-        if (!rawLasPath) {
-          toast.error('ไม่พบไฟล์ .las ต้นฉบับในระบบ');
-          return;
-        }
-
-        toast.info('กำลังเริ่มดาวน์โหลดไฟล์ .las...');
-        setIsExporting(true);
-        
         const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(rawLasPath, {
           download: true, 
         });
@@ -331,13 +395,12 @@ export default function VisualizePage() {
           a.click();
           document.body.removeChild(a);
         } else {
-          toast.error('ไม่สามารถสร้างลิงก์ดาวน์โหลดได้');
+          toast.error('Failed to create download link.');
         }
         setIsExporting(false);
 
       } else if (type === 'potree') {
-        toast.info('กำลังเตรียมบีบอัดข้อมูล Potree ที่ Backend...');
-        setIsExporting(true);
+        toast.info('Preparing Potree data for export on the backend...');
         
         const fastApiUrl = process.env.NEXT_PUBLIC_FASTAPI_URL || 'http://localhost:8000';
         
@@ -347,7 +410,7 @@ export default function VisualizePage() {
           body: JSON.stringify({ project_id: projectId, bucket_name: BUCKET_NAME })
         });
         
-        if (!res.ok) throw new Error('ไม่สามารถเชื่อมต่อกับ Backend ได้');
+        if (!res.ok) throw new Error('Failed to connect to the backend.');
 
         const intervalId = setInterval(async () => {
           try {
@@ -357,7 +420,7 @@ export default function VisualizePage() {
             if (statusData.status === 'completed') {
               clearInterval(intervalId);
               setIsExporting(false);
-              toast.success('บีบอัดข้อมูลสำเร็จ! กำลังเริ่มดาวน์โหลด...', { id: 'potree-export-toast' });
+              toast.success('Data compression completed! Starting download...', { id: 'potree-export-toast' });
               
               const a = document.createElement('a');
               a.href = statusData.download_url;
@@ -369,21 +432,21 @@ export default function VisualizePage() {
             } else if (statusData.status === 'error') {
               clearInterval(intervalId);
               setIsExporting(false);
-              toast.error(`เกิดข้อผิดพลาดในการ Zip ไฟล์: ${statusData.message}`, { id: 'potree-export-toast' });
+              toast.error(`Failed to compress file: ${statusData.message}`, { id: 'potree-export-toast' });
             } else {
               toast.loading(`Backend: ${statusData.message}`, { id: 'potree-export-toast' });
             }
           } catch (pollErr) {
              clearInterval(intervalId);
              setIsExporting(false);
-             toast.error('ขาดการเชื่อมต่อระหว่างตรวจสอบสถานะการ Export');
+             toast.error('Failed to connect to the backend while checking export status');
           }
-        }, 3000); // เช็คทุกๆ 3 วินาที
+        }, 3000); 
       }
 
     } catch (error: any) {
       console.error("Export Error:", error);
-      toast.error(`เกิดข้อผิดพลาดในการ Export: ${error.message}`);
+      toast.error(`Failed to export data: ${error.message}`);
       setIsExporting(false);
     }
   };
@@ -430,6 +493,27 @@ export default function VisualizePage() {
         onLoad={initPannellum} 
       />
 
+      <CreditConfirmModal
+        isOpen={showCreditModal}
+        onClose={() => { if (!isExporting) setShowCreditModal(false); }}
+        onConfirm={handleConfirmExport}
+        title={`Export ${exportTarget === 'las' ? 'Raw .LAS File' : 'Potree Format'}`}
+        description="Exporting data will incur charges based on file size. Credit will be deducted upon confirmation."
+        totalCost={exportTarget ? calculateExportCost(fileSizeBytes, exportTarget) : 0}
+        remainCredit={userCredits}
+        isLoading={isExporting}
+        confirmText="Confirm Export"
+        details={[
+          { label: 'File Type', value: exportTarget === 'las' ? 'Raw Data (.LAS)' : 'Potree Package (.ZIP)' },
+          { label: 'File Size (Raw)', value: `${getGbString(fileSizeBytes)} GB` },
+          { 
+            label: 'Base Cost', 
+            value: `${calculateExportCost(fileSizeBytes, 'las')} credits` 
+          },
+          ...(exportTarget === 'potree' ? [{ label: 'Potree Compilation Fee', value: '+10 credits' }] : [])
+        ]}
+      />
+
       {/* Header */}
       <div className="pb-4 border-b border-neutral-800 bg-neutral-900 flex-shrink-0 relative z-20">
         <div className="flex items-center justify-between mb-4">
@@ -452,7 +536,7 @@ export default function VisualizePage() {
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   userTier === 'free'
                     ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
-                    : 'bg-[#B8AB9C] hover:bg-[#B8AB9C]/80 text-white'
+                    : 'bg-[#B8AB9C] hover:bg-[#B8AB9C]/80 text-neutral-900'
                 }`}
               >
                 {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
@@ -463,9 +547,9 @@ export default function VisualizePage() {
 
             {/* Dropdown Options */}
             {showExportMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-neutral-800 border border-neutral-700 rounded-md shadow-lg overflow-hidden z-50">
+              <div className="absolute right-0 mt-36 w-48 bg-neutral-800 border border-neutral-700 rounded-md shadow-lg overflow-hidden z-50">
                 <button 
-                  onClick={() => handleExport('las')}
+                  onClick={() => initiateExport('las')}
                   className="w-full text-left px-4 py-3 text-sm hover:bg-neutral-700 flex items-center justify-between transition-colors"
                 >
                   <span>Raw .LAS File</span>
@@ -473,7 +557,7 @@ export default function VisualizePage() {
                 </button>
                 <div className="h-px bg-neutral-700"></div>
                 <button 
-                  onClick={() => handleExport('potree')}
+                  onClick={() => initiateExport('potree')}
                   className="w-full text-left px-4 py-3 text-sm hover:bg-neutral-700 flex items-center justify-between transition-colors"
                 >
                   <span>Potree Format</span>
@@ -507,10 +591,8 @@ export default function VisualizePage() {
         </button>
       </div>
 
-      {/* Main Content: Split View (โค้ดเดิม) */}
       <div className="flex flex-col md:flex-row h-[65vh] border border-neutral-800 min-h-0 rounded-lg overflow-hidden z-10">
         
-        {/* LEFT: Point Cloud View */}
         <div 
           id="point-cloud-container" 
           className={`relative border-neutral-800 group bg-black min-w-0 ${viewMode === '360' ? 'hidden' : 'flex-1'} ${viewMode === 'split' ? 'border-r' : ''}`}
@@ -553,7 +635,6 @@ export default function VisualizePage() {
           </div>
         </div>
 
-        {/* RIGHT: Panorama View */}
         <div className={`relative bg-[#0A0A0A] flex flex-col min-w-0 ${viewMode === '3d' ? 'hidden' : 'flex-1'}`}>
           <div className="p-4 flex items-center justify-between border-b border-neutral-800/50 bg-neutral-900/30 flex-shrink-0">
             <span className="text-xs font-mono text-neutral-400 truncate">
@@ -592,7 +673,6 @@ export default function VisualizePage() {
         </div>
       </div>
 
-      {/* Bottom Panel */}
       <div className="p-6 bg-neutral-950 border border-neutral-800 rounded-lg mt-4 grid grid-cols-1 md:grid-cols-2 gap-8 flex-shrink-0">
         <div className="flex flex-col gap-6">
           <div>
