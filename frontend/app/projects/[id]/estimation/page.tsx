@@ -21,6 +21,7 @@ interface ProjectImage {
 
 interface DetectedObject {
   id: string;
+  image_id?: string;
   class_name: string;
   confidence: number;
   distance_from_camera: number;
