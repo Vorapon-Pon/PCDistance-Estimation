@@ -1,5 +1,6 @@
 import { House, Box, Clock, Zap, Link as LinkIcon, Image as ImageIcon, Eye, Heart } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle} from '@/components/ui/card';
+import Link from 'next/link'
 import { createClient } from '@/utils/server'
 
 export default async function DashboardPage() {
@@ -27,6 +28,7 @@ export default async function DashboardPage() {
                 created_at,
                 last_updated,
                 image_count
+                
             `)
             .eq('user_id', user.id)
             .order('last_updated', { ascending: false }),
@@ -47,11 +49,12 @@ export default async function DashboardPage() {
                 projects!inner (
                     id,
                     project_name,
-                    profiles ( display_name )
+                    thumbnail_url,
+                    profiles ( display_name ),
+                    project_likes(count)
                 )
             `)
             .eq('user_id', user.id)
-            .limit(5)
     ]);
 
     if (projectsError) return <div className="text-white p-8">Error loading projects data</div>
@@ -76,8 +79,9 @@ export default async function DashboardPage() {
             id: projectData?.id,
             title: projectData?.project_name || 'Untitled Project',
             user: profileData?.display_name || 'Unknown User',
-            likes: "N/A", 
-            views: "N/A"  
+            likes: projectData?.project_likes?.[0]?.count || 0,
+            views: "N/A",  
+            thumbnail: projectData?.thumbnail_url || undefined
         }
     }) || [];
 
@@ -131,11 +135,13 @@ export default async function DashboardPage() {
                     {favorites.length > 0 ? (
                         favorites.map((fav, idx) => (
                             <ProjectCard 
+                                id={fav.id}
                                 key={fav.id || idx} 
                                 title={fav.title} 
                                 user={fav.user} 
                                 likes={fav.likes} 
                                 views={fav.views} 
+                                thumbnail={fav.thumbnail}
                             />
                         ))
                     ) : (
@@ -207,21 +213,34 @@ function StatCard({ title, value, subText, icon}: { title:string, value:string, 
     );
 }
 
-function ProjectCard({ title, user, likes, views }: { title: string, user: string, likes: string, views: string }) {
+function ProjectCard({ id, title, user, likes, views, thumbnail }: { id: string, title: string, user: string, likes: string, views: string, thumbnail?: string }) {
   return (
-    <Card className="bg-[#282828] border-[#383838] hover:bg-[#3F3F3F]/50 transition-colors cursor-pointer group p-3 flex flex-row items-center gap-4">
-       <div className="w-14 h-14 bg-[#282828] rounded-lg flex items-center justify-center border-[#383838] shrink-0 group-hover:border-[#545454] transition-colors">
-         <ImageIcon className="text-[#383838]  group-hover:text-[#545454]" size={24} />
-       </div>
-       <div className="flex flex-col justify-center min-w-0">
-         <h3 className="text-white text-sm font-medium truncate">{title}</h3>
-         <p className="text-[#8B8B8B] text-xs mb-1 truncate">by {user}</p>
-         <div className="flex items-center gap-3 text-xs text-[#8B8B8B]">
-            <span className="flex items-center gap-1">♥ {likes}</span>
-            <span className="flex items-center gap-1"><Eye size={12} /> {views}</span>
-         </div>
-       </div>
-    </Card>
+    <Link href={`/explore/${id}/overview`}>
+        <Card className="bg-neutral-800 border-neutral-700 hover:bg-[#3F3F3F]/50 transition-colors cursor-pointer group p-3 flex flex-row items-center gap-4">
+        <div className="relative w-24 h-24 shrink-0 overflow-hidden rounded-lg bg-neutral-800/50 border border-neutral-800">
+            {thumbnail ? (
+                <img 
+                src={thumbnail} 
+                alt={title} 
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                />
+            ) : (
+                <div className="w-full h-full flex items-center justify-center text-neutral-600 transition-colors group-hover:text-neutral-400">
+                <ImageIcon size={28} strokeWidth={1.5} />
+                </div>
+            )}
+            <div className="absolute inset-0 ring-1 ring-inset ring-white/5 rounded-lg pointer-events-none" />
+            </div>
+        <div className="flex flex-col justify-center min-w-0">
+            <h3 className="text-white text-sm font-medium truncate">{title}</h3>
+            <p className="text-[#8B8B8B] text-xs mb-1 truncate">by {user}</p>
+            <div className="flex items-center gap-3 text-xs text-[#8B8B8B]">
+                <span className="flex items-center gap-1">♥ {likes}</span>
+                <span className="flex items-center gap-1"><Eye size={12} /> {views}</span>
+            </div>
+        </div>
+        </Card>
+    </Link>
   );
 }
 

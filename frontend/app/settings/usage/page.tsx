@@ -98,8 +98,8 @@ export default function UsagePage() {
   };
 
   if (loading) return (
-    <div className="h-screen flex items-center justify-center bg-black text-white">
-      <Loader2 className="animate-spin mr-2" /> Loading...
+    <div className="text-white flex items-center justify-center h-64 gap-2">
+      <Loader2 className="animate-spin mr-2" /> Loading Usage History...
     </div>
   );
 

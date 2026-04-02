@@ -163,29 +163,62 @@ export default function UploadPage() {
     setSelectedFiles(prev => prev.filter((_, index) => index !== indexToRemove));
   };
 
+  const getGbString = (bytes: number) => {
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2);
+  };
+
   const calculateCosts = () => {
     let imageCount = 0;
     let pointCloudCount = 0;
     let cameraCount = 0;
     
+    let pointCloudCost = 0;
+    let pointCloudTotalBytes = 0; // เพิ่มตัวแปรเก็บขนาดไฟล์รวมของ Point Cloud
+
     selectedFiles.forEach(file => {
       const ext = file.name.split('.').pop()?.toLowerCase();
-      if (['jpg', 'jpeg', 'png'].includes(ext || '')) imageCount++;
-      if (['las', 'bin', 'pcd', 'npy'].includes(ext || '')) pointCloudCount++;
-      else if (['txt', 'csv'].includes(ext || '')) cameraCount++;
+      
+      if (['jpg', 'jpeg', 'png'].includes(ext || '')) {
+        imageCount++;
+      } 
+      else if (['las', 'bin', 'pcd', 'npy'].includes(ext || '')) {
+        pointCloudCount++;
+        pointCloudTotalBytes += file.size; // บวกสะสมขนาดไฟล์
+        
+        const gbSize = file.size / (1024 * 1024 * 1024);
+        let currentFileCost = 15; 
+
+        if (gbSize > 10) currentFileCost = 100; 
+        else if (gbSize >= 5) currentFileCost = 75; 
+        else if (gbSize >= 3) currentFileCost = 50; 
+        else if (gbSize >= 1) currentFileCost = 25; 
+
+        pointCloudCost += currentFileCost;
+      } 
+      else if (['txt', 'csv'].includes(ext || '')) {
+        cameraCount++;
+      }
     });
 
     const imageCost = imageCount * 0.1; 
-    const pointCloudCost = pointCloudCount * 10; 
     const cameraCost = cameraCount * 2;
-
     const totalCost = imageCost + pointCloudCost + cameraCost;
-    
 
-    return { imageCount, pointCloudCount, cameraCount, totalCost };
+    // Return ค่าทั้งหมดที่ต้องใช้แสดงผลออกมาด้วย
+    return { 
+      imageCount, imageCost, 
+      pointCloudCount, pointCloudCost, pointCloudTotalBytes, 
+      cameraCount, cameraCost, 
+      totalCost 
+    };
   };
 
-  const { imageCount, pointCloudCount, cameraCount, totalCost } = calculateCosts();
+  const { 
+    imageCount, imageCost, 
+    pointCloudCount, pointCloudCost, pointCloudTotalBytes, 
+    cameraCount, cameraCost, 
+    totalCost 
+  } = calculateCosts();
 
   const handleStartUploadClick = () => {
     if (selectedFiles.length === 0) return;
@@ -490,8 +523,11 @@ export default function UploadPage() {
         details={[
           { label: 'Batch Name', value: batchName },
           { label: 'Images to upload', value: `${imageCount} file(s)` },
-          { label: 'Point Clouds to upload', value: `${pointCloudCount} file(s)` },
-          { label: 'Camera Details (.txt)', value: `${cameraCount} file(s)` },
+          { label: 'Point Clouds to upload', value: `${getGbString(pointCloudTotalBytes)} GB` },
+          { label: 'Camera Details (.txt/.csv)', value: `${cameraCount} file(s)` },
+          { label: 'Image Upload Cost', value: `${imageCost.toFixed(1)} Credits(0.1 cr/ea)` },
+          { label: `Point Cloud Upload Cost`, value: `${pointCloudCost.toFixed(1)} Credits` },
+          { label: 'Camera Details Upload Cost', value: `${cameraCost.toFixed(1)} Credits(2 cr/ea)` },
         ]}
       />
     </div>

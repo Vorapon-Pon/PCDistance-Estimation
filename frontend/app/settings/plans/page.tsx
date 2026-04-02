@@ -187,7 +187,7 @@ function SettingsContent() {
             </div>
             <h3 className="text-2xl font-bold text-white mb-2">Payment Successful!</h3>
             <p className="text-zinc-400 mb-8">Thank you for your purchase. Your account and features have been updated.</p>
-            <button onClick={() => setIsSuccessModalOpen(false)} className="w-full bg-[#38b2ac] hover:bg-[#319795] text-white font-semibold py-3 rounded-xl transition-colors">
+            <button onClick={() => setIsSuccessModalOpen(false)} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 rounded-xl transition-colors">
               Continue
             </button>
           </div>
