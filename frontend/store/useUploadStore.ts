@@ -175,11 +175,16 @@ export const useUploadStore = create<UploadState>((set, get) => ({
         } else if (isPointCloud) {
           const folder = 'raw';
           const filePath = `${projectId}/${folder}/${timestamp}_${file.name}`;
-          let supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://127.0.0.1:54321';
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://127.0.0.1:54321';
 
-          if (!supabaseUrl.includes('127.0.0.1') && !supabaseUrl.includes('localhost')) {
-            supabaseUrl = supabaseUrl.replace('http://', 'https://');
-            supabaseUrl = supabaseUrl.replace(':54321', ''); 
+          if (typeof window !== 'undefined') {
+            const originalXhrOpen = window.XMLHttpRequest.prototype.open;
+            window.XMLHttpRequest.prototype.open = function(this: XMLHttpRequest, method: string, url: string | URL, ...rest: any[]) {
+              if (typeof url === 'string' && url.includes('trycloudflare.com')) {
+                url = url.replace('http://', 'https://').replace(':54321', '');
+              }
+              return (originalXhrOpen as any).apply(this, [method, url, ...rest]);
+            };
           }
 
           await new Promise((resolve, reject) => {
