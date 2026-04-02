@@ -23,14 +23,14 @@ export async function createCheckoutSession(
 
   try {
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
+      payment_method_types: ['card', 'promptpay'],
       line_items: [
         {
           price: priceId, 
           quantity: 1,
         },
       ],
-      mode: type === 'subscription' ? 'subscription' : 'payment',
+      mode: type === 'subscription' ? 'payment' : 'payment',
       client_reference_id: user.id, 
       
       metadata: {
