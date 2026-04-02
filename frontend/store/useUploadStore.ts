@@ -187,6 +187,11 @@ export const useUploadStore = create<UploadState>((set, get) => ({
               },
               uploadDataDuringCreation: true,
               removeFingerprintOnSuccess: true,
+
+              fingerprint: (file) => {
+                return Promise.resolve(`force-new-${Date.now()}-${file.name}`);
+              },
+              
               storeFingerprintForResuming: false,
               metadata: {
                 bucketName: 'project_files',
