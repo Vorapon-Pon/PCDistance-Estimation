@@ -230,7 +230,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
                     objectName: filePath,
                     contentType: 'application/octet-stream',
                   },
-                  chunkSize: 100 * 1024 * 1024,
+                  chunkSize: 6 * 1024 * 1024,
                   onBeforeRequest: async (req) => {
                     const { data: { session } } = await supabase.auth.getSession();
                     if (session?.access_token) {
