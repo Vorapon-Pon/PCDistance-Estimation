@@ -202,49 +202,49 @@ export const useUploadStore = create<UploadState>((set, get) => ({
               const filePath = `${projectId}/${folder}/${timestamp}_${file.name}`;
 
               const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-              let endpointUrl = `${supabaseUrl}/storage/v1/upload/resumable`;
-              if (endpointUrl.includes('trycloudflare.com')) {
-                endpointUrl = endpointUrl.replace('http://', 'https://').replace(':54321', '');
-              }
 
-              const { data: { session: freshSession } } = await supabase.auth.getSession();
-              const token = freshSession?.access_token;
-              if (!token) {
-                throw new Error("Authentication token missing. Please refresh the page or login again.");
-              }
+            if (typeof window !== 'undefined') {
+              const originalXhrOpen = window.XMLHttpRequest.prototype.open;
+              window.XMLHttpRequest.prototype.open = function(this: XMLHttpRequest, method: string, url: string | URL, ...rest: any[]) {
+                if (typeof url === 'string' && url.includes('trycloudflare.com')) {
+                  url = url.replace('http://', 'https://').replace(':54321', '');
+                }
+                return (originalXhrOpen as any).apply(this, [method, url, ...rest]);
+              };
+            }
 
-              await new Promise((resolve, reject) => {
-                const upload = new tus.Upload(file, {
-                  endpoint: endpointUrl,
-                  retryDelays: [0, 3000, 5000, 10000, 20000],
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-upsert': 'true',
-                  },
-                  uploadDataDuringCreation: true,
-                  removeFingerprintOnSuccess: true,
-                  storeFingerprintForResuming: false,
-                  fingerprint: (file) => Promise.resolve(`upload-${projectId}-${file.name}-${file.size}`),
-                  metadata: {
-                    bucketName: 'project_files',
-                    objectName: filePath,
-                    contentType: 'application/octet-stream',
-                  },
-                  chunkSize: 6 * 1024 * 1024,
-                  onProgress: (bytesSent, bytesTotal) => {
-                    const percent = (bytesSent / bytesTotal) * 100;
-                    fileProgress[fileIndex] = percent;
-                    updateGlobalProgress();
-                  },
-                  onSuccess: () => resolve(true),
-                  onError: (error) => {
-                    console.error("TUS Upload Error:", error);
-                    reject(error);
-                  },
-                });
-
-                upload.start();
+            await new Promise((resolve, reject) => {
+              const upload = new tus.Upload(file, {
+                endpoint: `${supabaseUrl}/storage/v1/upload/resumable`,
+                retryDelays: [0, 3000, 5000, 10000, 20000],
+                headers: {
+                  authorization: `Bearer ${session?.access_token}`,
+                  'x-upsert': 'true',
+                },
+                uploadDataDuringCreation: true,
+                removeFingerprintOnSuccess: true,
+                storeFingerprintForResuming: false, 
+                fingerprint: (file) => Promise.resolve(`upload-${projectId}-${file.name}-${file.size}`),
+                metadata: {
+                  bucketName: 'project_files',
+                  objectName: filePath,
+                  contentType: 'application/octet-stream',
+                },
+                chunkSize: 100 * 1024 * 1024,
+                onProgress: (bytesSent, bytesTotal) => {
+                  const percent = (bytesSent / bytesTotal) * 100;
+                  fileProgress[fileIndex] = percent;
+                  updateGlobalProgress();
+                },
+                onSuccess: () => resolve(true),
+                onError: (error) => {
+                  console.error("TUS Upload Error:", error);
+                  reject(error);
+                },
               });
+
+              upload.start();
+            });
 
               await supabase.from('project_point_clouds').insert({
                 project_id: projectId,
