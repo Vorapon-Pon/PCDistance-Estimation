@@ -231,12 +231,6 @@ export const useUploadStore = create<UploadState>((set, get) => ({
                     contentType: 'application/octet-stream',
                   },
                   chunkSize: 6 * 1024 * 1024,
-                  onBeforeRequest: async (req) => {
-                    const { data: { session } } = await supabase.auth.getSession();
-                    if (session?.access_token) {
-                      req.setHeader('Authorization', `Bearer ${session.access_token}`);
-                    }
-                  },
                   onProgress: (bytesSent, bytesTotal) => {
                     const percent = (bytesSent / bytesTotal) * 100;
                     fileProgress[fileIndex] = percent;
