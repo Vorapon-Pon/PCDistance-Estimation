@@ -109,162 +109,177 @@ export const useUploadStore = create<UploadState>((set, get) => ({
         set({ currentFileIndex: fileIndex + 1, statusText: `Processing files...` });
 
         const uploadTask = (async () => {
-          if (isCameraPos) {
-            const filePath = `${projectId}/camera_positions/${timestamp}_${file.name}`;
-            const { error: uploadError } = await supabase.storage.from('project_files').upload(filePath, file);
-            if (uploadError) return; 
+          try {
+            if (isCameraPos) {
+              const filePath = `${projectId}/camera_positions/${timestamp}_${file.name}`;
+              const { error: uploadError } = await supabase.storage.from('project_files').upload(filePath, file);
+              if (uploadError) throw uploadError;
 
-            const text = await file.text();
-            const lines = text.split('\n').filter(line => line.trim() !== '' && line.includes(','));
-            const recordsToInsert = lines.slice(1).map(line => {
-              const col = line.split(',');
-              const unixTime = parseFloat(col[2]);
-              return {
-                project_id: projectId,
-                frame_index: parseInt(col[0]),
-                image_filename: col[1],
-                timestamp: !isNaN(unixTime) ? new Date(unixTime * 1000).toISOString() : new Date().toISOString(),
-                x: parseFloat(col[3]),
-                y: parseFloat(col[4]),
-                z: parseFloat(col[5]),
-                heading: parseFloat(col[6]),
-                roll: parseFloat(col[7]),
-                pitch: parseFloat(col[8]),
-                camera: col[9],
-                quality: parseInt(col[10]),
-                line: parseInt(col[11]),
-                color: parseInt(col[12]), 
-                accuracy_xyz: parseFloat(col[13])
-              }
-            });
-              
-            const chunkSize = 500;
-            for (let j = 0; j < recordsToInsert.length; j += chunkSize) {
-              const chunk = recordsToInsert.slice(j, j + chunkSize);
-              const { error: insertError } = await supabase.from('camera_position').insert(chunk);
-              if (insertError) console.error(`Insert error: ${insertError.message}`);
-            }
-        
-            await supabase.from('camera_position_files').insert({
-              project_id: projectId,
-              user_id: currentUser.id,
-              filename: file.name,
-              row_count: recordsToInsert.length, 
-            });
-            hasCameraOrImageUpdates = true;
-            
-            fileProgress[fileIndex] = 100;
-            updateGlobalProgress();
-
-          } else if (isImage) {
-            const folder = 'images';
-            const filePath = `${projectId}/${folder}/${timestamp}_${file.name}`;
-            const thumbnailPath = filePath.replace(/(\.[\w\d_-]+)$/i, '_thumb$1');
-            const uploadOriginalPromise = supabase.storage.from('project_files').upload(filePath, file);
-            const processAndUploadThumbPromise = processImage(file).then(async ({ thumbnail, width, height }) => {
-              await supabase.storage.from('project_files').upload(thumbnailPath, thumbnail);
-              return { width, height };
-            });
-
-            const [, thumbData] = await Promise.all([
-              uploadOriginalPromise,
-              processAndUploadThumbPromise
-            ]);
-
-            if (!firstThumbnailUrl) {
-              const { data: urlData } = supabase.storage.from('project_files').getPublicUrl(thumbnailPath);
-              firstThumbnailUrl = urlData.publicUrl;
-            }
-
-            imageRecordsToInsert.push({
-              project_id: projectId,
-              batch_id: batchData.id,
-              storage_path: filePath,
-              thumbnail_path: thumbnailPath,
-              width: thumbData.width,
-              height: thumbData.height,
-              format: file.type || 'image/jpeg',
-              size_bytes: file.size,
-              user_id: currentUser.id
-            });
-            
-            successImageCount++;
-            hasCameraOrImageUpdates = true;
-
-            fileProgress[fileIndex] = 100;
-            updateGlobalProgress();
-
-          } else if (isPointCloud) {
-            const folder = 'raw';
-            const filePath = `${projectId}/${folder}/${timestamp}_${file.name}`;
-
-            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-            if (typeof window !== 'undefined') {
-              const originalXhrOpen = window.XMLHttpRequest.prototype.open;
-              window.XMLHttpRequest.prototype.open = function(this: XMLHttpRequest, method: string, url: string | URL, ...rest: any[]) {
-                if (typeof url === 'string' && url.includes('trycloudflare.com')) {
-                  url = url.replace('http://', 'https://').replace(':54321', '');
+              const text = await file.text();
+              const lines = text.split('\n').filter(line => line.trim() !== '' && line.includes(','));
+              const recordsToInsert = lines.slice(1).map(line => {
+                const col = line.split(',');
+                const unixTime = parseFloat(col[2]);
+                return {
+                  project_id: projectId,
+                  frame_index: parseInt(col[0]),
+                  image_filename: col[1],
+                  timestamp: !isNaN(unixTime) ? new Date(unixTime * 1000).toISOString() : new Date().toISOString(),
+                  x: parseFloat(col[3]),
+                  y: parseFloat(col[4]),
+                  z: parseFloat(col[5]),
+                  heading: parseFloat(col[6]),
+                  roll: parseFloat(col[7]),
+                  pitch: parseFloat(col[8]),
+                  camera: col[9],
+                  quality: parseInt(col[10]),
+                  line: parseInt(col[11]),
+                  color: parseInt(col[12]), 
+                  accuracy_xyz: parseFloat(col[13])
                 }
-                return (originalXhrOpen as any).apply(this, [method, url, ...rest]);
-              };
-            }
+              });
+                
+              const chunkSize = 500;
+              for (let j = 0; j < recordsToInsert.length; j += chunkSize) {
+                const chunk = recordsToInsert.slice(j, j + chunkSize);
+                const { error: insertError } = await supabase.from('camera_position').insert(chunk);
+                if (insertError) console.error(`Insert error: ${insertError.message}`);
+              }
+          
+              await supabase.from('camera_position_files').insert({
+                project_id: projectId,
+                user_id: currentUser.id,
+                filename: file.name,
+                row_count: recordsToInsert.length, 
+              });
+              hasCameraOrImageUpdates = true;
+              
+              fileProgress[fileIndex] = 100;
+              updateGlobalProgress();
 
-            await new Promise((resolve, reject) => {
-              const upload = new tus.Upload(file, {
-                endpoint: `${supabaseUrl}/storage/v1/upload/resumable`,
-                retryDelays: [0, 3000, 5000, 10000, 20000],
-                headers: {
-                  authorization: `Bearer ${session?.access_token}`,
-                  'x-upsert': 'true',
-                },
-                uploadDataDuringCreation: true,
-                removeFingerprintOnSuccess: true,
-                storeFingerprintForResuming: false, 
-                fingerprint: (file) => Promise.resolve(`upload-${projectId}-${file.name}-${file.size}`),
-                metadata: {
-                  bucketName: 'project_files',
-                  objectName: filePath,
-                  contentType: 'application/octet-stream',
-                },
-                chunkSize: 50 * 1024 * 1024,
-                onProgress: (bytesSent, bytesTotal) => {
-                  const percent = (bytesSent / bytesTotal) * 100;
-                  fileProgress[fileIndex] = percent;
-                  updateGlobalProgress();
-                },
-                onSuccess: () => resolve(true),
-                onError: (error) => {
-                  console.error("TUS Upload Error:", error);
-                  reject(error);
-                },
+            } else if (isImage) {
+              const folder = 'images';
+              const filePath = `${projectId}/${folder}/${timestamp}_${file.name}`;
+              const thumbnailPath = filePath.replace(/(\.[\w\d_-]+)$/i, '_thumb$1');
+              const uploadOriginalPromise = supabase.storage.from('project_files').upload(filePath, file);
+              const processAndUploadThumbPromise = processImage(file).then(async ({ thumbnail, width, height }) => {
+                await supabase.storage.from('project_files').upload(thumbnailPath, thumbnail);
+                return { width, height };
               });
 
-              upload.start();
-            });
+              const [originalRes, thumbData] = await Promise.all([
+                uploadOriginalPromise,
+                processAndUploadThumbPromise
+              ]);
 
-            await supabase.from('project_point_clouds').insert({
-              project_id: projectId,
-              batch_id: batchData.id,
-              storage_path: filePath,
-              format: ext,
-              size_bytes: file.size,
-              processing_status: 'pending',
-              user_id: currentUser.id
-            });
-            
-            const backendUrl = process.env.NEXT_PUBLIC_API_URL;
-            fetch(`${backendUrl}/api/convert-pointcloud`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ project_id: projectId, bucket_name: "project_files", file_path: filePath })
-            }).catch(console.error);
+              if (originalRes.error) throw originalRes.error;
 
-          } else {
-            const filePath = `${projectId}/other/${timestamp}_${file.name}`;
-            await supabase.storage.from('project_files').upload(filePath, file);
-            fileProgress[fileIndex] = 100;
-            updateGlobalProgress();
+              if (!firstThumbnailUrl) {
+                const { data: urlData } = supabase.storage.from('project_files').getPublicUrl(thumbnailPath);
+                firstThumbnailUrl = urlData.publicUrl;
+              }
+
+              imageRecordsToInsert.push({
+                project_id: projectId,
+                batch_id: batchData.id,
+                storage_path: filePath,
+                thumbnail_path: thumbnailPath,
+                width: thumbData.width,
+                height: thumbData.height,
+                format: file.type || 'image/jpeg',
+                size_bytes: file.size,
+                user_id: currentUser.id
+              });
+              
+              successImageCount++;
+              hasCameraOrImageUpdates = true;
+
+              fileProgress[fileIndex] = 100;
+              updateGlobalProgress();
+
+            } else if (isPointCloud) {
+              const folder = 'raw';
+              const filePath = `${projectId}/${folder}/${timestamp}_${file.name}`;
+
+              const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+              if (typeof window !== 'undefined') {
+                const originalXhrOpen = window.XMLHttpRequest.prototype.open;
+                window.XMLHttpRequest.prototype.open = function(this: XMLHttpRequest, method: string, url: string | URL, ...rest: any[]) {
+                  if (typeof url === 'string' && url.includes('trycloudflare.com')) {
+                    url = url.replace('http://', 'https://').replace(':54321', '');
+                  }
+                  return (originalXhrOpen as any).apply(this, [method, url, ...rest]);
+                };
+              }
+
+              await new Promise((resolve, reject) => {
+                const upload = new tus.Upload(file, {
+                  endpoint: `${supabaseUrl}/storage/v1/upload/resumable`,
+                  retryDelays: [0, 3000, 5000, 10000, 20000],
+                  headers: {
+                    authorization: `Bearer ${session?.access_token}`,
+                    'x-upsert': 'true',
+                  },
+                  uploadDataDuringCreation: true,
+                  removeFingerprintOnSuccess: true,
+                  storeFingerprintForResuming: false, 
+                  fingerprint: (file) => Promise.resolve(`upload-${projectId}-${file.name}-${file.size}`),
+                  metadata: {
+                    bucketName: 'project_files',
+                    objectName: filePath,
+                    contentType: 'application/octet-stream',
+                  },
+                  chunkSize: 100 * 1024 * 1024, // ปรับเป็น 100MB ตามความเหมาะสม
+                  onBeforeRequest: async (req) => { // ดึง Token ใหม่เสมอ ป้องกัน 403
+                    const { data: { session: currentSession } } = await supabase.auth.getSession();
+                    if (currentSession?.access_token) {
+                      req.setHeader('Authorization', `Bearer ${currentSession.access_token}`);
+                    }
+                  },
+                  onProgress: (bytesSent, bytesTotal) => {
+                    const percent = (bytesSent / bytesTotal) * 100;
+                    fileProgress[fileIndex] = percent;
+                    updateGlobalProgress();
+                  },
+                  onSuccess: () => resolve(true),
+                  onError: (error) => {
+                    console.error("TUS Upload Error:", error);
+                    reject(error);
+                  },
+                });
+
+                upload.start();
+              });
+
+              await supabase.from('project_point_clouds').insert({
+                project_id: projectId,
+                batch_id: batchData.id,
+                storage_path: filePath,
+                format: ext,
+                size_bytes: file.size,
+                processing_status: 'pending',
+                user_id: currentUser.id
+              });
+              
+              const backendUrl = process.env.NEXT_PUBLIC_API_URL;
+              fetch(`${backendUrl}/api/convert-pointcloud`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ project_id: projectId, bucket_name: "project_files", file_path: filePath })
+              }).catch(console.error);
+
+            } else {
+              const filePath = `${projectId}/other/${timestamp}_${file.name}`;
+              const { error } = await supabase.storage.from('project_files').upload(filePath, file);
+              if (error) throw error;
+              fileProgress[fileIndex] = 100;
+              updateGlobalProgress();
+            }
+          } catch (fileError: any) {
+            console.error(`Error processing file ${file.name}:`, fileError);
+            toast.error(`Failed to process ${file.name}: ${fileError.message}`);
+            // ตัว Catch ตรงนี้จะทำให้ไฟล์อื่นๆ ยังทำงานและเซฟลง DB ต่อไปได้แม้อีกไฟล์จะพัง
           }
         })();
 
@@ -300,7 +315,13 @@ export const useUploadStore = create<UploadState>((set, get) => ({
         await supabase.rpc('link_camera_to_images', { p_project_id: projectId });
       }
 
-      toast.success(`Upload completed successfully!`);
+      // ตรวจสอบว่าสำเร็จ 100% หรือมีไฟล์บางไฟล์พังไปบ้าง
+      const finalProgress = get().uploadProgress;
+      if (finalProgress === 100) {
+        toast.success(`Upload completed successfully!`);
+      } else {
+        toast.warning(`Upload finished, but some files failed.`);
+      }
 
       const { data: currentProject } = await supabase.from('projects').select('thumbnail_url').eq('id', projectId).single();
       const projectUpdatePayload: any = { status: 'active' };
@@ -312,11 +333,13 @@ export const useUploadStore = create<UploadState>((set, get) => ({
       await supabase.from('projects').update(projectUpdatePayload).eq('id', projectId);
 
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(`Upload Error: ${error.message}`);
     } finally {
-      set({ statusText: 'Completed', uploadProgress: 100 });
+      const currentProgress = get().uploadProgress;
+      set({ statusText: currentProgress === 100 ? 'Completed' : 'Finished with errors' });
+      
       setTimeout(() => {
-        set({ uploadProgress: 0, currentFileIndex: 0, isUploading: false }); 
+        set({ uploadProgress: 0, currentFileIndex: 0, isUploading: false, statusText: '' }); 
       }, 3000);
     }
   }
