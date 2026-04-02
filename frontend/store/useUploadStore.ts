@@ -227,7 +227,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
                   objectName: filePath,
                   contentType: 'application/octet-stream',
                 },
-                chunkSize: 6 * 1024 * 1024,
+                chunkSize: 50 * 1024 * 1024,
                 onProgress: (bytesSent, bytesTotal) => {
                   const percent = (bytesSent / bytesTotal) * 100;
                   fileProgress[fileIndex] = percent;
