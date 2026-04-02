@@ -187,6 +187,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
               },
               uploadDataDuringCreation: true,
               removeFingerprintOnSuccess: true,
+              storeFingerprintForResuming: false,
               metadata: {
                 bucketName: 'project_files',
                 objectName: filePath,
