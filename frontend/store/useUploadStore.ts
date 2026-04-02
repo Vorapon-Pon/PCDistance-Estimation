@@ -178,7 +178,8 @@ export const useUploadStore = create<UploadState>((set, get) => ({
           const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://127.0.0.1:54321';
 
           await new Promise((resolve, reject) => {
-            const upload = new tus.Upload(file, {
+            let upload: any;
+            upload = new tus.Upload(file, {
               endpoint: `${supabaseUrl}/storage/v1/upload/resumable`,
               retryDelays: [0, 3000, 5000, 10000, 20000],
               headers: {
@@ -187,12 +188,19 @@ export const useUploadStore = create<UploadState>((set, get) => ({
               },
               uploadDataDuringCreation: true,
               removeFingerprintOnSuccess: true,
-
+              storeFingerprintForResuming: false, 
               fingerprint: (file) => {
                 return Promise.resolve(`force-new-${Date.now()}-${file.name}`);
               },
-              
-              storeFingerprintForResuming: false,
+              onAfterResponse: (req, res) => {
+                if (upload && upload.url) {
+                  if (upload.url.includes('http://') || upload.url.includes(':54321')) {
+                    upload.url = upload.url
+                      .replace('http://', 'https://')
+                      .replace(':54321', '');
+                  }
+                }
+              },
               metadata: {
                 bucketName: 'project_files',
                 objectName: filePath,
