@@ -38,7 +38,7 @@ function SettingsContent() {
     }
   }, [searchParams]);
 
-  const handleBuyPlan = async (priceId: string, type: 'subscription' | 'topup', planTier: string, creditsToAdd: number = 0) => {
+  const handleBuyPlan = async (priceId: string, type: 'payment' | 'topup', planTier: string, creditsToAdd: number = 0) => {
     setIsLoading(priceId);
     try {
       const result = await createCheckoutSession(priceId, type, planTier, creditsToAdd);
@@ -137,7 +137,7 @@ function SettingsContent() {
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-blue-400" /> View Object Detection</li>
             </ul>
             <button 
-              onClick={() => handleBuyPlan(VIEWER_PRICE_ID, 'subscription', 'viewer', 200)}
+              onClick={() => handleBuyPlan(VIEWER_PRICE_ID, 'payment', 'viewer', 200)}
               disabled={isLoading !== null || isViewer || isUploader}
               className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -163,7 +163,7 @@ function SettingsContent() {
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-teal-500" /> Priority Processing</li>
             </ul>
             <button 
-              onClick={() => handleBuyPlan(isViewer ? UPLOADER_UPGRADE_PRICE_ID : UPLOADER_PRICE_ID, 'subscription', 'uploader', 500)}
+              onClick={() => handleBuyPlan(isViewer ? UPLOADER_UPGRADE_PRICE_ID : UPLOADER_PRICE_ID, 'payment', 'uploader', 500)}
               disabled={isLoading !== null || isUploader}
               className="w-full bg-[#38b2ac] hover:bg-[#319795] text-white py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
