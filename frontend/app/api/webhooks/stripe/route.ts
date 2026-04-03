@@ -38,16 +38,22 @@ export async function POST(req: Request) {
 
       if (profile) {
         if (mode === 'payment') { // for ถ้วย
-          if (transactionType === 'PLAN_UPGRADE') {
-          await supabaseAdmin.from('profiles').update({ 
+          const { error: profileError } = await supabaseAdmin.from('profiles').update({ 
             plan_tier: planTier, 
             credits: profile.credits + creditsToAdd,
+            stripe_customer_id: session.customer as string,
+            stripe_subscription_id: session.subscription as string,
+            current_period_end: 'DEBUGING'
           }).eq('id', userId);
-        } else {
-          await supabaseAdmin.from('profiles').update({ 
-            credits: profile.credits + creditsToAdd 
-          }).eq('id', userId);
-        }
+          if (profileError) console.error("Update Profile Error:", profileError);
+
+          const { error: txError } = await supabaseAdmin.from('credit_transactions').insert({
+            user_id: userId,
+            amount: creditsToAdd,
+            transaction_type: transactionType,
+            description: `Subscribed to ${planTier.toUpperCase()} Plan (Sub: ${session.subscription})`
+          });
+          if (txError) console.error("Insert Transaction Error:", txError);
 
         } else if (mode === 'subscription') {
           let currentPeriodEnd = null;
