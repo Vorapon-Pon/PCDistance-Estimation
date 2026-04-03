@@ -49,6 +49,16 @@ export async function POST(req: Request) {
           }).eq('id', userId);
         }
 
+        const { error: txError } = await supabaseAdmin.from('credit_transactions').insert({
+            user_id: userId,
+            amount: creditsToAdd,
+            transaction_type: transactionType,
+            description: transactionType === 'PLAN_UPGRADE' 
+              ? `Upgraded to ${planTier.toUpperCase()} Plan (PromptPay/One-time)` 
+              : `Top-up Credits`
+          });
+          if (txError) console.error("Insert Transaction Error:", txError);
+
         } else if (mode === 'subscription') {
           let currentPeriodEnd = null;
           if (session.subscription) {
