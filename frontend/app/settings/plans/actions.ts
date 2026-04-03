@@ -7,7 +7,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export async function createCheckoutSession(
   priceId: string, 
-  type: 'subscription' | 'topup',
+  type: 'payment' | 'topup',
   planTier: string = 'free', 
   creditsToAdd: number = 0 
 ) {
@@ -30,13 +30,13 @@ export async function createCheckoutSession(
           quantity: 1,
         },
       ],
-      mode: type === 'subscription' ? 'payment' : 'payment',
+      mode: type === 'payment' ? 'payment' : 'payment',
       client_reference_id: user.id, 
       
       metadata: {
         plan_tier: planTier, 
         credits_to_add: creditsToAdd.toString(),
-        transaction_type: type === 'subscription' ? 'PLAN_UPGRADE' : 'TOP_UP'
+        transaction_type: type === 'payment' ? 'PLAN_UPGRADE' : 'TOP_UP'
       },
 
       success_url: `${getBaseURL()}/settings/plans?success=true`,
