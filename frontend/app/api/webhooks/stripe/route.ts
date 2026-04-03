@@ -43,7 +43,7 @@ export async function POST(req: Request) {
             credits: profile.credits + creditsToAdd,
             stripe_customer_id: session.customer as string,
             stripe_subscription_id: session.subscription as string,
-            current_period_end: 'DEBUGING'
+            current_period_end: ''
           }).eq('id', userId);
           if (profileError) console.error("Update Profile Error:", profileError);
 
